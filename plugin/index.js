@@ -137,7 +137,10 @@ module.exports = function (app) {
       updates: [{
         values: [{
           path: signalkData.path,
-          value: signalkData.value
+          value: signalkData.value,
+          meta: {
+            units: signalkData.unit
+          }
         }]
       }]
     })
@@ -184,7 +187,10 @@ module.exports = function (app) {
         updates: [{
           values: [{
             path: `propulsion.${options.engineInstance || 'port'}.fuel.averageRate`,
-            value: avgRate
+            value: avgRate,
+            meta: {
+              units: 'm3/s'
+            }
           }]
         }]
       })
@@ -199,7 +205,10 @@ module.exports = function (app) {
         updates: [{
           values: [{
             path: `propulsion.${options.engineInstance || 'port'}.fuel.totalConsumption`,
-            value: fuelConsumptionTracker.totalConsumption
+            value: fuelConsumptionTracker.totalConsumption,
+            meta: {
+              units: 'm3'
+            }
           }]
         }]
       })
