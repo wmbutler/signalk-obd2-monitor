@@ -50,7 +50,8 @@ module.exports = function (app) {
         port: options.connection.serialPort,
         baudRate: options.connection.baudRate,
         engineProfile: engineProfile,
-        enabledPids: getEnabledPids(options, engineProfile)
+        enabledPids: getEnabledPids(options, engineProfile),
+        logging: options.logging || {}
       })
 
       obd2Connection.on('data', (pidData) => {

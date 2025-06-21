@@ -1,7 +1,7 @@
 {
   "name": "signalk-obd2-monitor",
-  "version": "1.0.0",
-  "description": "SignalK plugin for monitoring marine engines via OBD2 interface with fuel flow, pressure monitoring, and configurable alarms",
+  "version": "1.1.0",
+  "description": "SignalK plugin for monitoring marine engines via OBD2 interface with fuel flow, pressure monitoring, configurable alarms, and comprehensive logging",
   "main": "plugin/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"

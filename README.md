@@ -10,6 +10,7 @@ A comprehensive SignalK plugin for monitoring marine engines via OBD2 interface 
 - **Smart Alarms**: Configurable multi-level alarms for temperature and pressure
 - **SignalK Integration**: Full integration with SignalK paths and notifications
 - **Auto-Discovery**: Automatic PID discovery for supported engines
+- **Comprehensive Logging**: Detailed logging of all OBD2 queries with special RPM tracking
 
 ## Supported Engine Manufacturers
 
@@ -99,6 +100,38 @@ A comprehensive SignalK plugin for monitoring marine engines via OBD2 interface 
 - **Warning**: 110°C
 - **Alarm**: 120°C
 
+### Logging Configuration
+
+The plugin includes comprehensive logging capabilities for debugging and monitoring:
+
+- **Enable Logging**: Turn on/off logging functionality
+- **Log Level**: Choose from error, warn, info, or debug levels
+- **Log Directory**: Specify where log files are stored (default: `logs/`)
+- **Log File**: Name of the log file (default: `obd2-monitor.log`)
+- **Max File Size**: Automatic log rotation when size limit reached (1-100 MB)
+- **Include Raw Data**: Option to include raw OBD2 hex responses
+
+#### Special RPM Logging
+The plugin specifically tracks all RPM queries (PID 0C) with:
+- Request timestamp and command
+- Raw OBD2 response data
+- Converted RPM value
+- Any errors encountered during the query
+
+Example log entry for successful RPM query:
+```json
+{
+  "timestamp": "2025-01-21T12:34:56.789Z",
+  "level": "INFO",
+  "message": "RPM query successful for PID 0C: 2500 rpm",
+  "pid": "0C",
+  "command": "010C",
+  "response": "41 0C 27 10",
+  "value": 2500,
+  "unit": "rpm"
+}
+```
+
 ## Hardware Requirements
 
 - OBD2 to Bluetooth/USB adapter (ELM327 compatible)
@@ -122,7 +155,8 @@ A comprehensive SignalK plugin for monitoring marine engines via OBD2 interface 
 ### No Data Received
 1. Check if engine supports standard OBD2 PIDs
 2. Try the Generic OBD2 profile first
-3. Enable debug logging in SignalK to see raw OBD2 responses
+3. Enable debug logging in the plugin configuration to see raw OBD2 responses
+4. Check the log files in the configured log directory for detailed error messages
 
 ### Bluetooth Connection (Linux)
 ```bash
@@ -185,6 +219,11 @@ MIT License - see LICENSE file for details
 - SignalK Slack channel: #obd2-monitor
 
 ## Changelog
+
+### v1.1.0
+- Added comprehensive logging system with automatic rotation
+- Special logging for RPM queries with error tracking
+- Configurable log levels and raw data inclusion
 
 ### v1.0.0
 - Initial release

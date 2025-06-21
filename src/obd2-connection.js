@@ -1,6 +1,7 @@
 const { SerialPort } = require('serialport')
 const EventEmitter = require('events')
 const PidDefinitions = require('./pid-definitions')
+const Logger = require('./logger')
 
 class OBD2Connection extends EventEmitter {
   constructor(options) {
@@ -13,6 +14,8 @@ class OBD2Connection extends EventEmitter {
     this.currentPidIndex = 0
     this.initialized = false
     this.buffer = ''
+    this.logger = new Logger(options.logging || {})
+    this.lastCommand = null
   }
 
   connect() {
@@ -66,7 +69,11 @@ class OBD2Connection extends EventEmitter {
 
   sendCommand(command) {
     if (this.port && this.port.isOpen) {
+      this.lastCommand = command
       this.port.write(command + '\r')
+      
+      // Log all OBD2 commands at debug level
+      this.logger.debug('OBD2 command sent', { command })
     }
   }
 
@@ -76,7 +83,14 @@ class OBD2Connection extends EventEmitter {
     }
 
     const pid = this.enabledPids[this.currentPidIndex]
-    this.sendCommand('01' + pid)
+    const command = '01' + pid
+    
+    // Log RPM query specifically
+    if (pid === '0C') {
+      this.logger.info('Requesting RPM data', { pid, command })
+    }
+    
+    this.sendCommand(command)
     
     // Move to next PID for next request
     this.currentPidIndex = (this.currentPidIndex + 1) % this.enabledPids.length
@@ -104,44 +118,86 @@ class OBD2Connection extends EventEmitter {
   }
 
   processResponse(response) {
-    // Skip echo and non-data responses
-    if (!response.includes('41') || response.includes('NO DATA')) {
-      return
-    }
+    try {
+      // Skip echo and non-data responses
+      if (!response.includes('41') || response.includes('NO DATA')) {
+        if (response.includes('NO DATA') && this.lastCommand) {
+          const pid = this.lastCommand.substring(2)
+          this.logger.warn('No data received for PID', { pid, command: this.lastCommand, response })
+          
+          // Special logging for RPM queries
+          if (pid === '0C') {
+            this.logger.logRpmQuery(pid, this.lastCommand, response, null, new Error('NO DATA response'))
+          }
+        }
+        return
+      }
 
-    // Parse OBD2 response (format: 41 XX YY ZZ...)
-    const parts = response.replace(/\s+/g, ' ').split(' ')
-    if (parts.length < 3 || parts[0] !== '41') {
-      return
-    }
+      // Parse OBD2 response (format: 41 XX YY ZZ...)
+      const parts = response.replace(/\s+/g, ' ').split(' ')
+      if (parts.length < 3 || parts[0] !== '41') {
+        this.logger.warn('Invalid OBD2 response format', { response, parts })
+        return
+      }
 
-    const pid = parts[1]
-    const valueBytes = parts.slice(2).map(byte => parseInt(byte, 16))
-    
-    // Get PID definition
-    const pidDef = PidDefinitions.getPidDefinition(pid)
-    if (!pidDef) {
-      return
-    }
+      const pid = parts[1]
+      const valueBytes = parts.slice(2).map(byte => parseInt(byte, 16))
+      
+      // Get PID definition
+      const pidDef = PidDefinitions.getPidDefinition(pid)
+      if (!pidDef) {
+        this.logger.warn('Unknown PID in response', { pid, response })
+        return
+      }
 
-    // Convert raw bytes to actual value
-    const value = pidDef.convert(valueBytes)
-    
-    // Check if this engine has custom mapping for this PID
-    let finalValue = value
-    if (this.engineProfile.customMappings && 
-        this.engineProfile.customMappings[pid] && 
-        this.engineProfile.customMappings[pid].conversion) {
-      finalValue = this.engineProfile.customMappings[pid].conversion(value)
-    }
+      // Convert raw bytes to actual value
+      const value = pidDef.convert(valueBytes)
+      
+      // Check if this engine has custom mapping for this PID
+      let finalValue = value
+      if (this.engineProfile.customMappings && 
+          this.engineProfile.customMappings[pid] && 
+          this.engineProfile.customMappings[pid].conversion) {
+        finalValue = this.engineProfile.customMappings[pid].conversion(value)
+      }
 
-    this.emit('data', {
-      pid: pid,
-      name: pidDef.name,
-      value: finalValue,
-      unit: pidDef.unit,
-      raw: valueBytes
-    })
+      // Special logging for RPM (PID 0C)
+      if (pid === '0C') {
+        this.logger.logRpmQuery(pid, this.lastCommand || `01${pid}`, response, finalValue)
+      }
+
+      // Log successful data processing at debug level
+      this.logger.debug('PID data processed', {
+        pid,
+        name: pidDef.name,
+        value: finalValue,
+        unit: pidDef.unit,
+        rawBytes: valueBytes
+      })
+
+      this.emit('data', {
+        pid: pid,
+        name: pidDef.name,
+        value: finalValue,
+        unit: pidDef.unit,
+        raw: valueBytes
+      })
+    } catch (error) {
+      this.logger.error('Error processing OBD2 response', {
+        response,
+        error: {
+          message: error.message,
+          stack: error.stack
+        }
+      })
+      
+      // If this was an RPM query, log it specifically
+      if (this.lastCommand && this.lastCommand.substring(2) === '0C') {
+        this.logger.logRpmQuery('0C', this.lastCommand, response, null, error)
+      }
+      
+      this.emit('error', error)
+    }
   }
 }
 
