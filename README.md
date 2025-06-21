@@ -103,37 +103,25 @@ A comprehensive SignalK plugin for monitoring marine engines via OBD2 interface 
 - **Warning**: 110°C
 - **Alarm**: 120°C
 
-### Logging Configuration
+### Debug Logging
 
-The plugin includes comprehensive logging capabilities for debugging and monitoring:
+The plugin uses SignalK's built-in logging system. To enable debug logging:
 
-- **Enable Logging**: Turn on/off logging functionality
-- **Log Level**: Choose from error, warn, info, or debug levels
-- **Log Directory**: Specify where log files are stored (default: `logs/`)
-- **Log File**: Name of the log file (default: `obd2-monitor.log`)
-- **Max File Size**: Automatic log rotation when size limit reached (1-100 MB)
-- **Include Raw Data**: Option to include raw OBD2 hex responses
+1. In the SignalK admin interface, go to Server → Settings
+2. Enable "Debug" mode
+3. Restart the SignalK server
 
-#### Special RPM Logging
-The plugin specifically tracks all RPM queries (PID 0C) with:
-- Request timestamp and command
-- Raw OBD2 response data
-- Converted RPM value
-- Any errors encountered during the query
+When debug mode is enabled, the plugin will log:
+- All OBD2 commands sent and responses received
+- Connection status and initialization steps
+- PID data processing and conversions
+- Special tracking for RPM queries (PID 0C)
+- Error messages and troubleshooting information
 
-Example log entry for successful RPM query:
-```json
-{
-  "timestamp": "2025-01-21T12:34:56.789Z",
-  "level": "INFO",
-  "message": "RPM query successful for PID 0C: 2500 rpm",
-  "pid": "0C",
-  "command": "010C",
-  "response": "41 0C 27 10",
-  "value": 2500,
-  "unit": "rpm"
-}
-```
+Debug logs can be viewed in:
+- SignalK Data Browser (Server → Data Browser)
+- Server logs (typically in `~/.signalk/logs/`)
+- Console output if running SignalK in development mode
 
 ## Hardware Requirements
 
@@ -158,8 +146,8 @@ Example log entry for successful RPM query:
 ### No Data Received
 1. Check if engine supports standard OBD2 PIDs
 2. Try the Generic OBD2 profile first
-3. Enable debug logging in the plugin configuration to see raw OBD2 responses
-4. Check the log files in the configured log directory for detailed error messages
+3. Enable debug mode in SignalK to see raw OBD2 responses
+4. Check the SignalK Data Browser for error messages and connection status
 
 ### Bluetooth Connection (Linux)
 ```bash
@@ -228,6 +216,8 @@ MIT License - see LICENSE file for details
 - Implemented continuous mode for zero-delay updates
 - Removed interval-based polling in favor of continuous querying
 - Significantly improved data update speed
+- Switched to SignalK's built-in logging system
+- Enhanced debug output for troubleshooting
 
 ### v1.1.0
 - Added comprehensive logging system with automatic rotation

@@ -57,11 +57,11 @@ module.exports = function (app) {
     // Create OBD2 connection
     try {
       obd2Connection = new OBD2Connection({
+        app: app,
         port: options.connection.serialPort,
         baudRate: options.connection.baudRate,
         engineProfile: engineProfile,
         enabledPids: getEnabledPids(options, engineProfile),
-        logging: options.logging || {},
         batchMode: options.connection.batchMode !== false,
         maxBatchSize: options.connection.maxBatchSize || 6,
         continuousMode: true

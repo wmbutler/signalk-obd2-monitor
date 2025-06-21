@@ -127,29 +127,5 @@
         "ui:help": "Critical temperature alarm threshold"
       }
     }
-  },
-  "logging": {
-    "ui:collapsible": true,
-    "ui:order": ["enabled", "logLevel", "logDir", "logFile", "maxFileSize", "includeRawData"],
-    "enabled": {
-      "ui:help": "Enable logging of all OBD2 queries and responses, including RPM queries"
-    },
-    "logLevel": {
-      "ui:widget": "select",
-      "ui:help": "Set the minimum severity level for log entries. Debug level includes all OBD2 commands"
-    },
-    "logDir": {
-      "ui:help": "Directory where log files will be stored (relative to SignalK data directory)"
-    },
-    "logFile": {
-      "ui:help": "Name of the log file. Rotated files will have timestamps appended"
-    },
-    "maxFileSize": {
-      "ui:widget": "range",
-      "ui:help": "Maximum size in MB before the log file is rotated"
-    },
-    "includeRawData": {
-      "ui:help": "Include raw OBD2 hex responses in logs. Useful for debugging but increases log size"
-    }
   }
 }

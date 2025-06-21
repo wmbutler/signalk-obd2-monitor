@@ -230,51 +230,6 @@
           }
         }
       }
-    },
-    "logging": {
-      "type": "object",
-      "title": "Logging Configuration",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "title": "Enable Logging",
-          "description": "Enable logging of OBD2 queries and responses",
-          "default": true
-        },
-        "logLevel": {
-          "type": "string",
-          "title": "Log Level",
-          "description": "Minimum log level to record",
-          "enum": ["error", "warn", "info", "debug"],
-          "default": "info"
-        },
-        "logDir": {
-          "type": "string",
-          "title": "Log Directory",
-          "description": "Directory to store log files (relative to SignalK data directory)",
-          "default": "logs"
-        },
-        "logFile": {
-          "type": "string",
-          "title": "Log File Name",
-          "description": "Name of the log file",
-          "default": "obd2-monitor.log"
-        },
-        "maxFileSize": {
-          "type": "number",
-          "title": "Maximum File Size (MB)",
-          "description": "Maximum size of log file before rotation",
-          "default": 10,
-          "minimum": 1,
-          "maximum": 100
-        },
-        "includeRawData": {
-          "type": "boolean",
-          "title": "Include Raw Data",
-          "description": "Include raw OBD2 responses in logs (may contain sensitive data)",
-          "default": true
-        }
-      }
     }
   }
 }

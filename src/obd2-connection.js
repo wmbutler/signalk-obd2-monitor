@@ -1,11 +1,11 @@
 const { SerialPort } = require('serialport')
 const EventEmitter = require('events')
 const PidDefinitions = require('./pid-definitions')
-const Logger = require('./logger')
 
 class OBD2Connection extends EventEmitter {
   constructor(options) {
     super()
+    this.app = options.app // SignalK app object for logging
     this.port = null
     this.portPath = options.port
     this.baudRate = options.baudRate
@@ -14,7 +14,6 @@ class OBD2Connection extends EventEmitter {
     this.currentPidIndex = 0
     this.initialized = false
     this.buffer = ''
-    this.logger = new Logger(options.logging || {})
     this.lastCommand = null
     this.batchMode = options.batchMode !== false // Default to true
     this.maxBatchSize = options.maxBatchSize || 6 // Most adapters support 6 PIDs per request
@@ -25,10 +24,7 @@ class OBD2Connection extends EventEmitter {
 
   connect() {
     try {
-      this.logger.info('Attempting to connect to OBD2 adapter', {
-        port: this.portPath,
-        baudRate: this.baudRate
-      })
+      this.app.debug(`Attempting to connect to OBD2 adapter on ${this.portPath} at ${this.baudRate} baud`)
       
       this.port = new SerialPort({
         path: this.portPath,
@@ -36,37 +32,28 @@ class OBD2Connection extends EventEmitter {
       })
 
       this.port.on('open', () => {
-        this.logger.info('Serial port opened successfully')
+        this.app.debug('Serial port opened successfully')
         this.emit('connected')
         this.initializeOBD()
       })
 
       this.port.on('data', (data) => {
-        this.logger.debug('Raw data received', { 
-          data: data.toString(), 
-          hex: data.toString('hex') 
-        })
+        this.app.debug(`Raw data received: ${data.toString()} (hex: ${data.toString('hex')})`)
         this.handleData(data)
       })
 
       this.port.on('error', (err) => {
-        this.logger.error('Serial port error', { 
-          error: err.message,
-          port: this.portPath 
-        })
+        this.app.error(`Serial port error on ${this.portPath}: ${err.message}`)
         this.emit('error', err)
       })
 
       this.port.on('close', () => {
-        this.logger.info('Serial port closed')
+        this.app.debug('Serial port closed')
         this.emit('disconnected')
         this.initialized = false
       })
     } catch (error) {
-      this.logger.error('Failed to create serial port', { 
-        error: error.message,
-        port: this.portPath 
-      })
+      this.app.error(`Failed to create serial port ${this.portPath}: ${error.message}`)
       this.emit('error', error)
     }
   }
@@ -79,51 +66,47 @@ class OBD2Connection extends EventEmitter {
   }
 
   initializeOBD() {
-    this.logger.info('Starting OBD2 initialization sequence')
+    this.app.debug('Starting OBD2 initialization sequence')
     
     // Send initialization commands
     setTimeout(() => {
-      this.logger.info('Sending ATZ (reset)')
+      this.app.debug('Sending ATZ (reset)')
       this.sendCommand('ATZ')
     }, 500)
     
     setTimeout(() => {
-      this.logger.info('Sending ATE0 (echo off)')
+      this.app.debug('Sending ATE0 (echo off)')
       this.sendCommand('ATE0')
     }, 2000)
     
     setTimeout(() => {
-      this.logger.info('Sending ATL0 (linefeeds off)')
+      this.app.debug('Sending ATL0 (linefeeds off)')
       this.sendCommand('ATL0')
     }, 3000)
     
     setTimeout(() => {
-      this.logger.info('Sending ATS0 (spaces off)')
+      this.app.debug('Sending ATS0 (spaces off)')
       this.sendCommand('ATS0')
     }, 4000)
     
     setTimeout(() => {
-      this.logger.info('Sending ATH0 (headers off)')
+      this.app.debug('Sending ATH0 (headers off)')
       this.sendCommand('ATH0')
     }, 5000)
     
     setTimeout(() => {
-      this.logger.info('Sending ATSP0 (auto protocol)')
+      this.app.debug('Sending ATSP0 (auto protocol)')
       this.sendCommand('ATSP0')
     }, 6000)
     
     setTimeout(() => {
-      this.logger.info('Sending test query 010C (RPM)')
+      this.app.debug('Sending test query 010C (RPM)')
       this.sendCommand('010C')
     }, 7000)
     
     setTimeout(() => {
       this.initialized = true
-      this.logger.info('OBD2 initialization complete', {
-        enabledPids: this.enabledPids,
-        batchMode: this.batchMode,
-        maxBatchSize: this.maxBatchSize
-      })
+      this.app.debug(`OBD2 initialization complete - PIDs: ${this.enabledPids.join(',')}, Batch: ${this.batchMode}, MaxBatch: ${this.maxBatchSize}`)
       this.emit('initialized')
     }, 8000)
   }
@@ -134,7 +117,7 @@ class OBD2Connection extends EventEmitter {
       this.port.write(command + '\r')
       
       // Log all OBD2 commands at debug level
-      this.logger.debug('OBD2 command sent', { command })
+      this.app.debug(`OBD2 command sent: ${command}`)
     }
   }
 
@@ -156,7 +139,7 @@ class OBD2Connection extends EventEmitter {
     
     // Log RPM query specifically
     if (pid === '0C') {
-      this.logger.info('Requesting RPM data', { pid, command })
+      this.app.debug(`Requesting RPM data - PID: ${pid}, Command: ${command}`)
     }
     
     this.sendCommand(command)
@@ -170,7 +153,7 @@ class OBD2Connection extends EventEmitter {
   requestPidBatch() {
     // If batch mode has failed before, fall back to single mode
     if (this.batchModeFailed) {
-      this.logger.info('Batch mode failed previously, using single PID mode')
+      this.app.debug('Batch mode failed previously, using single PID mode')
       this.batchMode = false
       this.requestSinglePid()
       return
@@ -191,15 +174,11 @@ class OBD2Connection extends EventEmitter {
       pidsInBatch.push(pid)
     }
     
-    this.logger.info('Requesting PID batch', { 
-      pids: pidsInBatch, 
-      command,
-      batchSize 
-    })
+    this.app.debug(`Requesting PID batch: ${pidsInBatch.join(',')} - Command: ${command}`)
     
     // Check if RPM is in this batch
     if (pidsInBatch.includes('0C')) {
-      this.logger.info('RPM included in batch request', { command })
+      this.app.debug(`RPM included in batch request: ${command}`)
     }
     
     this.sendCommand(command)
@@ -224,14 +203,11 @@ class OBD2Connection extends EventEmitter {
     
     // Set a timeout for response
     this.responseTimeout = setTimeout(() => {
-      this.logger.warn('Response timeout - no data received', {
-        lastCommand: this.lastCommand,
-        batchMode: this.batchMode
-      })
+      this.app.debug(`Response timeout - no data received for command: ${this.lastCommand}`)
       
       // If batch mode timed out, try falling back to single mode
       if (this.batchMode && this.currentBatch) {
-        this.logger.warn('Batch mode timeout, disabling batch mode')
+        this.app.debug('Batch mode timeout, disabling batch mode')
         this.batchModeFailed = true
         this.batchMode = false
       }
@@ -255,10 +231,7 @@ class OBD2Connection extends EventEmitter {
   handleData(data) {
     this.buffer += data.toString()
     
-    this.logger.debug('Buffer state', { 
-      buffer: this.buffer,
-      hasPrompt: this.buffer.includes('>')
-    })
+    this.app.debug(`Buffer state: ${this.buffer.length} bytes, has prompt: ${this.buffer.includes('>')}`)
     
     // Look for complete responses ending with '>'
     if (this.buffer.includes('>')) {
@@ -275,16 +248,13 @@ class OBD2Connection extends EventEmitter {
         }
       }
       
-      this.logger.debug('Parsed responses', { 
-        responses,
-        count: responses.length 
-      })
+      this.app.debug(`Parsed ${responses.length} responses: ${responses.join(', ')}`)
       
       // Process all responses
       if (responses.length > 0) {
         this.processBatchResponse(responses)
       } else {
-        this.logger.warn('No valid responses found in buffer')
+        this.app.debug('No valid responses found in buffer')
       }
       
       // Clear buffer
@@ -292,17 +262,14 @@ class OBD2Connection extends EventEmitter {
       
       // If in continuous mode, immediately request next batch
       if (this.continuousMode && this.initialized) {
-        this.logger.debug('Scheduling next PID request')
+        this.app.debug('Scheduling next PID request')
         setImmediate(() => this.requestNextPid())
       }
     }
   }
 
   processBatchResponse(responses) {
-    this.logger.debug('Processing batch response', { 
-      responseCount: responses.length,
-      responses 
-    })
+    this.app.debug(`Processing batch response with ${responses.length} lines`)
     
     // Check if this is a multi-line response (batch mode)
     const dataResponses = responses.filter(r => r.startsWith('41'))
@@ -310,32 +277,26 @@ class OBD2Connection extends EventEmitter {
     if (dataResponses.length === 0) {
       // Handle error responses
       if (responses.some(r => r.includes('NO DATA'))) {
-        this.logger.warn('No data received', { responses })
+        this.app.debug(`No data received: ${responses.join(', ')}`)
       } else if (responses.some(r => r.includes('UNABLE TO CONNECT'))) {
-        this.logger.error('Unable to connect to ECU', { responses })
+        this.app.error(`Unable to connect to ECU: ${responses.join(', ')}`)
       } else if (responses.some(r => r.includes('CAN ERROR'))) {
-        this.logger.error('CAN bus error', { responses })
+        this.app.error(`CAN bus error: ${responses.join(', ')}`)
       } else if (responses.some(r => r.includes('?'))) {
-        this.logger.error('Invalid command', { 
-          responses,
-          lastCommand: this.lastCommand 
-        })
+        this.app.error(`Invalid command '${this.lastCommand}': ${responses.join(', ')}`)
         // If batch mode failed with invalid command, disable it
         if (this.batchMode && this.currentBatch) {
-          this.logger.warn('Batch command not supported, disabling batch mode')
+          this.app.debug('Batch command not supported, disabling batch mode')
           this.batchModeFailed = true
           this.batchMode = false
         }
       } else {
-        this.logger.warn('No valid data responses', { responses })
+        this.app.debug(`No valid data responses: ${responses.join(', ')}`)
       }
       return
     }
     
-    this.logger.info('Found data responses', { 
-      count: dataResponses.length,
-      dataResponses 
-    })
+    this.app.debug(`Found ${dataResponses.length} data responses`)
     
     // Process each data line
     dataResponses.forEach(response => {
@@ -349,11 +310,11 @@ class OBD2Connection extends EventEmitter {
       if (!response.includes('41') || response.includes('NO DATA')) {
         if (response.includes('NO DATA') && this.lastCommand) {
           const pid = this.lastCommand.substring(2)
-          this.logger.warn('No data received for PID', { pid, command: this.lastCommand, response })
+          this.app.debug(`No data received for PID ${pid} - Command: ${this.lastCommand}, Response: ${response}`)
           
           // Special logging for RPM queries
           if (pid === '0C') {
-            this.logger.logRpmQuery(pid, this.lastCommand, response, null, new Error('NO DATA response'))
+            this.app.debug(`RPM query failed with NO DATA response`)
           }
         }
         return
@@ -362,7 +323,7 @@ class OBD2Connection extends EventEmitter {
       // Parse OBD2 response (format: 41 XX YY ZZ...)
       const parts = response.replace(/\s+/g, ' ').split(' ')
       if (parts.length < 3 || parts[0] !== '41') {
-        this.logger.warn('Invalid OBD2 response format', { response, parts })
+        this.app.debug(`Invalid OBD2 response format: ${response}`)
         return
       }
 
@@ -372,7 +333,7 @@ class OBD2Connection extends EventEmitter {
       // Get PID definition
       const pidDef = PidDefinitions.getPidDefinition(pid)
       if (!pidDef) {
-        this.logger.warn('Unknown PID in response', { pid, response })
+        this.app.debug(`Unknown PID in response: ${pid}`)
         return
       }
 
@@ -389,17 +350,11 @@ class OBD2Connection extends EventEmitter {
 
       // Special logging for RPM (PID 0C)
       if (pid === '0C') {
-        this.logger.logRpmQuery(pid, this.lastCommand || `01${pid}`, response, finalValue)
+        this.app.debug(`RPM query successful - PID: ${pid}, Value: ${finalValue} ${pidDef.unit}, Response: ${response}`)
       }
 
       // Log successful data processing at debug level
-      this.logger.debug('PID data processed', {
-        pid,
-        name: pidDef.name,
-        value: finalValue,
-        unit: pidDef.unit,
-        rawBytes: valueBytes
-      })
+      this.app.debug(`PID ${pid} (${pidDef.name}): ${finalValue} ${pidDef.unit}`)
 
       this.emit('data', {
         pid: pid,
@@ -409,17 +364,11 @@ class OBD2Connection extends EventEmitter {
         raw: valueBytes
       })
     } catch (error) {
-      this.logger.error('Error processing OBD2 response', {
-        response,
-        error: {
-          message: error.message,
-          stack: error.stack
-        }
-      })
+      this.app.error(`Error processing OBD2 response '${response}': ${error.message}`)
       
       // If this was an RPM query, log it specifically
       if (this.lastCommand && this.lastCommand.substring(2) === '0C') {
-        this.logger.logRpmQuery('0C', this.lastCommand, response, null, error)
+        this.app.error(`RPM query error: ${error.message}`)
       }
       
       this.emit('error', error)
