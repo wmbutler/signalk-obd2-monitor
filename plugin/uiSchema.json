@@ -1,0 +1,146 @@
+{
+  "connection": {
+    "serialPort": {
+      "ui:help": "Select the serial port where your OBD2 adapter is connected"
+    },
+    "baudRate": {
+      "ui:help": "Most OBD2 adapters use 9600 baud"
+    },
+    "updateInterval": {
+      "ui:widget": "range",
+      "ui:help": "How frequently to request data from the engine"
+    }
+  },
+  "engineManufacturer": {
+    "ui:widget": "select",
+    "ui:help": "Select your engine manufacturer"
+  },
+  "engineModel": {
+    "ui:widget": "select",
+    "ui:help": "Select your specific engine model",
+    "ui:options": {
+      "enumOptions": {
+        "Generic OBD2": [
+          { "value": "standard", "label": "Standard OBD2 PIDs" }
+        ],
+        "Hyundai": [
+          { "value": "seasall-s270", "label": "SeasAll S270" },
+          { "value": "seasall-s250", "label": "SeasAll S250" },
+          { "value": "seasall-r200", "label": "SeasAll R200" }
+        ],
+        "Yanmar": [
+          { "value": "4jh", "label": "4JH Series" },
+          { "value": "6ly", "label": "6LY Series" },
+          { "value": "8lv", "label": "8LV Series" }
+        ],
+        "Volvo Penta": [
+          { "value": "d2-75", "label": "D2-75" },
+          { "value": "d4-300", "label": "D4-300" },
+          { "value": "d6-400", "label": "D6-400" }
+        ],
+        "Mercury": [
+          { "value": "verado-350", "label": "Verado 350" },
+          { "value": "diesel-tdi-4.2", "label": "Diesel TDI 4.2" }
+        ],
+        "Caterpillar": [
+          { "value": "c7", "label": "C7 Marine" },
+          { "value": "c12", "label": "C12 Marine" },
+          { "value": "c18", "label": "C18 Marine" }
+        ],
+        "Cummins": [
+          { "value": "qsb6.7", "label": "QSB 6.7" },
+          { "value": "qsc8.3", "label": "QSC 8.3" },
+          { "value": "qsl9", "label": "QSL 9" }
+        ],
+        "John Deere": [
+          { "value": "4045", "label": "PowerTech 4045" },
+          { "value": "6068", "label": "PowerTech 6068" },
+          { "value": "6090", "label": "PowerTech 6090" }
+        ],
+        "MAN": [
+          { "value": "i6-730", "label": "i6-730" },
+          { "value": "i6-800", "label": "i6-800" },
+          { "value": "v8-1000", "label": "V8-1000" }
+        ],
+        "MTU": [
+          { "value": "series-2000", "label": "Series 2000" },
+          { "value": "series-4000", "label": "Series 4000" }
+        ]
+      }
+    }
+  },
+  "engineInstance": {
+    "ui:help": "Which engine is this monitoring?"
+  },
+  "monitoring": {
+    "fuelFlowRate": {
+      "ui:help": "Monitor real-time fuel consumption (requires PID 5E support)"
+    },
+    "fuelPressure": {
+      "ui:help": "Monitor fuel rail pressure (requires PID 22/23 support)"
+    },
+    "calculateFuelConsumption": {
+      "ui:help": "Track total fuel used and average consumption rate"
+    },
+    "calculateFuelEfficiency": {
+      "ui:help": "Calculate fuel efficiency metrics (requires speed data)"
+    }
+  },
+  "alarms": {
+    "ui:order": ["coolantTemperature", "fuelPressure", "oilTemperature"],
+    "coolantTemperature": {
+      "ui:collapsible": true,
+      "enabled": {
+        "ui:help": "Enable temperature monitoring and alarms"
+      },
+      "warning": {
+        "ui:widget": "range",
+        "ui:help": "Temperature at which to issue a warning"
+      },
+      "alarm": {
+        "ui:widget": "range",
+        "ui:help": "Temperature at which to issue an alarm"
+      },
+      "emergency": {
+        "ui:widget": "range",
+        "ui:help": "Critical temperature requiring immediate action"
+      }
+    },
+    "fuelPressure": {
+      "ui:collapsible": true,
+      "enabled": {
+        "ui:help": "Enable fuel pressure monitoring and alarms"
+      },
+      "lowWarning": {
+        "ui:widget": "range",
+        "ui:help": "Pressure below which to issue a low pressure warning"
+      },
+      "lowAlarm": {
+        "ui:widget": "range",
+        "ui:help": "Critical low pressure alarm threshold"
+      },
+      "highWarning": {
+        "ui:widget": "range",
+        "ui:help": "Pressure above which to issue a high pressure warning"
+      },
+      "highAlarm": {
+        "ui:widget": "range",
+        "ui:help": "Critical high pressure alarm threshold"
+      }
+    },
+    "oilTemperature": {
+      "ui:collapsible": true,
+      "enabled": {
+        "ui:help": "Enable oil temperature monitoring and alarms"
+      },
+      "warning": {
+        "ui:widget": "range",
+        "ui:help": "Temperature at which to issue a warning"
+      },
+      "alarm": {
+        "ui:widget": "range",
+        "ui:help": "Critical temperature alarm threshold"
+      }
+    }
+  }
+}

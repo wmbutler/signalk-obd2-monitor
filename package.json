@@ -1,0 +1,34 @@
+{
+  "name": "signalk-obd2-monitor",
+  "version": "1.0.0",
+  "description": "SignalK plugin for monitoring marine engines via OBD2 interface with fuel flow, pressure monitoring, and configurable alarms",
+  "main": "plugin/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "signalk-node-server-plugin",
+    "signalk",
+    "obd2",
+    "engine-monitoring",
+    "marine",
+    "fuel-flow",
+    "engine-alarms"
+  ],
+  "author": {
+    "name": "Your Name",
+    "email": "your.email@example.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/signalk-obd2-monitor.git"
+  },
+  "dependencies": {
+    "serialport": "^12.0.0"
+  },
+  "signalk": {
+    "appIcon": "./assets/icon.png",
+    "displayName": "OBD2 Engine Monitor"
+  }
+}
