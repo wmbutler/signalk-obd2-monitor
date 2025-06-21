@@ -239,6 +239,24 @@ const pidDefinitions = {
     bytes: 2,
     unit: 'L/h',
     convert: (bytes) => ((bytes[0] * 256) + bytes[1]) / 20
+  },
+  '66': {
+    name: 'Mass air flow sensor (alternative)',
+    bytes: 2,
+    unit: 'g/s',
+    convert: (bytes) => ((bytes[0] * 256) + bytes[1]) / 100
+  },
+  '9E': {
+    name: 'Engine fuel rate (alternative)',
+    bytes: 2,
+    unit: 'L/h',
+    convert: (bytes) => ((bytes[0] * 256) + bytes[1]) / 20
+  },
+  'A2': {
+    name: 'Cylinder fuel rate',
+    bytes: 2,
+    unit: 'mg/stroke',
+    convert: (bytes) => ((bytes[0] * 256) + bytes[1]) / 32
   }
 }
 

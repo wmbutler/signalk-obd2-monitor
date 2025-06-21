@@ -44,14 +44,18 @@ module.exports = function (app) {
       supportedPids: engineProfile.supportedPids
     })
 
-    // Initialize fuel consumption tracking if fuel flow PID (5E) is supported
-    if (engineProfile.supportedPids.includes('5E')) {
+    // Initialize fuel consumption tracking if any fuel flow PID is supported
+    const fuelFlowPids = ['5E', '9E', 'A2']
+    const supportedFuelPid = fuelFlowPids.find(pid => engineProfile.supportedPids.includes(pid))
+    
+    if (supportedFuelPid) {
       fuelConsumptionTracker = {
         totalConsumption: 0,
         startTime: Date.now(),
-        samples: []
+        samples: [],
+        fuelPid: supportedFuelPid
       }
-      app.debug('Fuel consumption tracking enabled (PID 5E supported)')
+      app.debug(`Fuel consumption tracking enabled (PID ${supportedFuelPid} supported)`)
     }
 
     // Create OBD2 connection
@@ -165,17 +169,26 @@ module.exports = function (app) {
     //   alarmManager.checkValue(signalkData.path, signalkData.value, pid)
     // }
 
-    // Track fuel consumption automatically if PID 5E
-    if (pid === '5E' && fuelConsumptionTracker) {
-      updateFuelConsumption(signalkData.value)
+    // Track fuel consumption automatically if it's a fuel flow PID
+    if (fuelConsumptionTracker && (pid === '5E' || pid === '9E' || pid === 'A2')) {
+      updateFuelConsumption(signalkData.value, pid)
     }
 
     // Calculate fuel efficiency automatically if we have the needed data
     calculateFuelEfficiency(pid, signalkData)
   }
 
-  function updateFuelConsumption(fuelRate) {
+  function updateFuelConsumption(fuelRate, pid) {
     if (!fuelConsumptionTracker) return
+    
+    // Convert cylinder fuel rate (A2) to engine fuel rate if needed
+    if (pid === 'A2') {
+      // This is mg/stroke - need to convert to L/h
+      // This is a rough approximation and may need engine-specific adjustment
+      const rpm = 2000 // Would need actual RPM from recent data
+      const cylinders = 4 // Would need actual cylinder count
+      fuelRate = (fuelRate * rpm * cylinders * 60) / (2 * 1000000) // Convert to L/h
+    }
     
     const now = Date.now()
     fuelConsumptionTracker.samples.push({

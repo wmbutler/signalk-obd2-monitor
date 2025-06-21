@@ -89,6 +89,21 @@ const pidToSignalKMap = {
     path: 'propulsion.{instance}.fuel.rate',
     unit: 'm3/s',
     convert: (value) => value * 0.001 / 3600 // Convert L/h to m³/s
+  },
+  '66': {
+    path: 'propulsion.{instance}.massAirFlowAlternative',
+    unit: 'kg/s',
+    convert: (value) => value / 1000 // Convert g/s to kg/s
+  },
+  '9E': {
+    path: 'propulsion.{instance}.fuel.rate',
+    unit: 'm3/s',
+    convert: (value) => value * 0.001 / 3600 // Convert L/h to m³/s
+  },
+  'A2': {
+    path: 'propulsion.{instance}.fuel.cylinderRate',
+    unit: 'kg/s',
+    convert: (value) => value * 0.000001 // Convert mg/stroke to kg/s (approximate)
   }
 }
 
