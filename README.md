@@ -5,12 +5,11 @@ A comprehensive SignalK plugin for monitoring marine engines via OBD2 interface 
 ## Features
 
 - **Multi-Engine Support**: Pre-configured profiles for major marine engine manufacturers
+- **Profile-Based Monitoring**: Each engine profile defines exactly which parameters to monitor
 - **Real-time Monitoring**: Track critical engine parameters via OBD2
-- **Fuel Management**: Monitor fuel flow rate, pressure, and calculate consumption
+- **Automatic Fuel Tracking**: Fuel consumption calculated when engine supports fuel flow
 - **Smart Alarms**: Configurable multi-level alarms for temperature and pressure
 - **SignalK Integration**: Full integration with SignalK paths and notifications
-- **Auto-Discovery**: Automatic PID discovery for supported engines
-- **Comprehensive Logging**: Detailed logging of all OBD2 queries with special RPM tracking
 - **Batch Querying**: Request multiple PIDs in a single query for faster updates
 - **Continuous Mode**: Automatic continuous querying without delays between values
 
@@ -80,11 +79,7 @@ A comprehensive SignalK plugin for monitoring marine engines via OBD2 interface 
 2. Select your specific engine model
 3. Choose engine instance (port, starboard, main, auxiliary)
 
-### Monitoring Options
-- ✅ **Monitor Fuel Flow Rate** - Track real-time fuel consumption
-- ✅ **Monitor Fuel Rail Pressure** - Monitor fuel system pressure
-- ✅ **Calculate Fuel Consumption** - Track total and average consumption
-- ✅ **Calculate Fuel Efficiency** - Calculate fuel per distance metrics
+The plugin will automatically query all PIDs supported by your selected engine profile. Each engine profile defines which parameters are available for that specific engine model. Fuel consumption tracking is automatically enabled if the engine supports fuel flow rate (PID 5E).
 
 ### Alarm Configuration
 
@@ -210,6 +205,12 @@ MIT License - see LICENSE file for details
 - SignalK Slack channel: #obd2-monitor
 
 ## Changelog
+
+### v1.3.0
+- Removed monitoring options - now uses only PIDs defined in engine profiles
+- Simplified configuration by removing PID discovery
+- Each engine profile now has complete control over monitored parameters
+- Automatic fuel consumption tracking when PID 5E is supported
 
 ### v1.2.0
 - Added batch querying for multiple PIDs in single request

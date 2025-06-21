@@ -57,20 +57,6 @@
   "engineInstance": {
     "ui:help": "Which engine is this monitoring?"
   },
-  "monitoring": {
-    "fuelFlowRate": {
-      "ui:help": "Monitor real-time fuel consumption (requires PID 5E support)"
-    },
-    "fuelPressure": {
-      "ui:help": "Monitor fuel rail pressure (requires PID 22/23 support)"
-    },
-    "calculateFuelConsumption": {
-      "ui:help": "Track total fuel used and average consumption rate"
-    },
-    "calculateFuelEfficiency": {
-      "ui:help": "Calculate fuel efficiency metrics (requires speed data)"
-    }
-  },
   "alarms": {
     "ui:order": ["coolantTemperature", "fuelPressure", "oilTemperature"],
     "coolantTemperature": {

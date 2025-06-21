@@ -44,14 +44,14 @@ module.exports = function (app) {
       supportedPids: engineProfile.supportedPids
     })
 
-    // Initialize fuel consumption tracking if enabled
-    if (options.monitoring.calculateFuelConsumption) {
+    // Initialize fuel consumption tracking if fuel flow PID (5E) is supported
+    if (engineProfile.supportedPids.includes('5E')) {
       fuelConsumptionTracker = {
         totalConsumption: 0,
         startTime: Date.now(),
         samples: []
       }
-      app.debug('Fuel consumption tracking enabled')
+      app.debug('Fuel consumption tracking enabled (PID 5E supported)')
     }
 
     // Create OBD2 connection
@@ -116,34 +116,13 @@ module.exports = function (app) {
   }
 
   function getEnabledPids(options, engineProfile) {
-    const enabledPids = []
-    
-    // Always include critical PIDs
-    enabledPids.push('0C', '05', '42') // RPM, Coolant Temp, Voltage
-    
-    // Add fuel monitoring PIDs if enabled
-    if (options.monitoring.fuelFlowRate) {
-      enabledPids.push('5E')
-    }
-    if (options.monitoring.fuelPressure) {
-      enabledPids.push('23', '22')
-    }
-    
-    // Add other monitored PIDs
-    enabledPids.push('5C', '04', '0F', '2F') // Oil temp, load, intake temp, fuel level
-    
-    // Filter by what the engine actually supports
-    const filteredPids = enabledPids.filter(pid => 
-      engineProfile.supportedPids.includes(pid)
-    )
-    
-    app.debug('Enabled PIDs', {
-      requested: enabledPids,
-      supported: engineProfile.supportedPids,
-      filtered: filteredPids
+    // Simply return all PIDs supported by the engine profile
+    app.debug('Using engine profile PIDs', {
+      engineProfile: `${engineProfile.manufacturer} ${engineProfile.model}`,
+      pids: engineProfile.supportedPids
     })
     
-    return filteredPids
+    return engineProfile.supportedPids
   }
 
   function handleOBD2Data(pidData, options) {
@@ -186,15 +165,13 @@ module.exports = function (app) {
     //   alarmManager.checkValue(signalkData.path, signalkData.value, pid)
     // }
 
-    // Track fuel consumption
-    if (options.monitoring.calculateFuelConsumption && pid === '5E') {
+    // Track fuel consumption automatically if PID 5E
+    if (pid === '5E' && fuelConsumptionTracker) {
       updateFuelConsumption(signalkData.value)
     }
 
-    // Calculate fuel efficiency if enabled
-    if (options.monitoring.calculateFuelEfficiency) {
-      calculateFuelEfficiency(pid, signalkData)
-    }
+    // Calculate fuel efficiency automatically if we have the needed data
+    calculateFuelEfficiency(pid, signalkData)
   }
 
   function updateFuelConsumption(fuelRate) {

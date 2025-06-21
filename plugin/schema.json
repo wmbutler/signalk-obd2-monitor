@@ -101,34 +101,6 @@
       "enum": ["port", "starboard", "main", "auxiliary"],
       "default": "port"
     },
-    "monitoring": {
-      "type": "object",
-      "title": "Monitoring Options",
-      "properties": {
-        "fuelFlowRate": {
-          "type": "boolean",
-          "title": "Monitor Fuel Flow Rate",
-          "default": true
-        },
-        "fuelPressure": {
-          "type": "boolean",
-          "title": "Monitor Fuel Rail Pressure",
-          "default": true
-        },
-        "calculateFuelConsumption": {
-          "type": "boolean",
-          "title": "Calculate Fuel Consumption",
-          "description": "Track total and average fuel consumption",
-          "default": true
-        },
-        "calculateFuelEfficiency": {
-          "type": "boolean",
-          "title": "Calculate Fuel Efficiency",
-          "description": "Calculate fuel per distance and optimal RPM",
-          "default": true
-        }
-      }
-    },
     "alarms": {
       "type": "object",
       "title": "Alarm Configuration",
