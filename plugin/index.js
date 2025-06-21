@@ -142,10 +142,10 @@ module.exports = function (app) {
       }]
     })
 
-    // Check alarms
-    if (alarmManager) {
-      alarmManager.checkValue(signalkData.path, signalkData.value, pid)
-    }
+    // Check alarms - DISABLED
+    // if (alarmManager) {
+    //   alarmManager.checkValue(signalkData.path, signalkData.value, pid)
+    // }
 
     // Track fuel consumption
     if (options.monitoring.calculateFuelConsumption && pid === '5E') {
