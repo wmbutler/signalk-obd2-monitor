@@ -298,10 +298,79 @@ class OBD2Connection extends EventEmitter {
     
     this.app.debug(`Found ${dataResponses.length} data responses`)
     
-    // Process each data line
+    // For batch mode responses without spaces, we need to split them
+    if (dataResponses.length === 1 && this.batchMode && this.currentBatch) {
+      const response = dataResponses[0]
+      // Check if this looks like a concatenated batch response (no spaces, very long)
+      if (!response.includes(' ') && response.length > 10) {
+        this.app.debug(`Detected concatenated batch response, attempting to split`)
+        // Try to split the batch response into individual PID responses
+        this.processBatchResponseWithoutSpaces(response)
+        return
+      }
+    }
+    
+    // Process each data line normally
     dataResponses.forEach(response => {
       this.processResponse(response)
     })
+  }
+
+  processBatchResponseWithoutSpaces(response) {
+    try {
+      // Remove the initial '41' mode indicator
+      if (!response.startsWith('41')) {
+        this.app.debug(`Batch response doesn't start with 41: ${response}`)
+        return
+      }
+      
+      let remaining = response.substring(2)
+      const processedPids = []
+      
+      // Process each PID in the batch
+      for (const pid of this.currentBatch.pids) {
+        if (remaining.length < 2) break
+        
+        // Check if the next part matches the expected PID
+        const responsePid = remaining.substring(0, 2)
+        if (responsePid !== pid) {
+          this.app.debug(`Expected PID ${pid} but found ${responsePid} in batch response`)
+          continue
+        }
+        
+        // Get PID definition to know how many data bytes to expect
+        const pidDef = PidDefinitions.getPidDefinition(pid)
+        if (!pidDef) {
+          this.app.debug(`Unknown PID ${pid} in batch response`)
+          remaining = remaining.substring(2) // Skip this PID
+          continue
+        }
+        
+        // Extract the data bytes for this PID
+        const dataLength = pidDef.bytes * 2 // Each byte is 2 hex chars
+        if (remaining.length < 2 + dataLength) {
+          this.app.debug(`Insufficient data for PID ${pid} in batch response`)
+          break
+        }
+        
+        // Construct individual response and process it
+        const individualResponse = '41' + remaining.substring(0, 2 + dataLength)
+        this.app.debug(`Extracted PID ${pid} from batch: ${individualResponse}`)
+        this.processResponse(individualResponse)
+        processedPids.push(pid)
+        
+        // Move to next PID in the response
+        remaining = remaining.substring(2 + dataLength)
+      }
+      
+      this.app.debug(`Processed ${processedPids.length} PIDs from batch response: ${processedPids.join(', ')}`)
+      
+    } catch (error) {
+      this.app.error(`Error processing batch response without spaces: ${error.message}`)
+      // Fall back to single PID mode
+      this.batchModeFailed = true
+      this.batchMode = false
+    }
   }
 
   processResponse(response) {
@@ -320,10 +389,30 @@ class OBD2Connection extends EventEmitter {
         return
       }
 
-      // Parse OBD2 response (format: 41 XX YY ZZ...)
-      const parts = response.replace(/\s+/g, ' ').split(' ')
+      // Parse OBD2 response - handle both formats (with and without spaces)
+      let parts = []
+      
+      // Check if response has spaces
+      if (response.includes(' ')) {
+        // Format: "41 XX YY ZZ..."
+        parts = response.trim().split(/\s+/)
+      } else {
+        // Format: "41XXYYZZ..." - parse as continuous hex string
+        const cleanResponse = response.trim()
+        if (cleanResponse.length < 6 || !cleanResponse.startsWith('41')) {
+          this.app.debug(`Invalid OBD2 response format: ${response}`)
+          return
+        }
+        
+        // Extract parts: 41 (mode), XX (PID), YY ZZ... (data bytes)
+        parts = []
+        for (let i = 0; i < cleanResponse.length; i += 2) {
+          parts.push(cleanResponse.substr(i, 2))
+        }
+      }
+      
       if (parts.length < 3 || parts[0] !== '41') {
-        this.app.debug(`Invalid OBD2 response format: ${response}`)
+        this.app.debug(`Invalid OBD2 response format: ${response} (parsed parts: ${parts.join(', ')})`)
         return
       }
 
