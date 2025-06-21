@@ -19,7 +19,7 @@ module.exports = function (app) {
   plugin.uiSchema = require('./uiSchema.json')
 
   plugin.start = function (options) {
-    app.debug('Starting OBD2 Engine Monitor plugin')
+    app.debug('Starting OBD2 Engine Monitor plugin with options:', options)
     
     // Initialize alarm manager
     alarmManager = new AlarmManager(app, options.alarms)
@@ -31,9 +31,18 @@ module.exports = function (app) {
     )
     
     if (!engineProfile) {
-      app.error('Invalid engine profile selected')
+      app.error('Invalid engine profile selected', {
+        manufacturer: options.engineManufacturer,
+        model: options.engineModel
+      })
       return
     }
+    
+    app.debug('Engine profile loaded', {
+      manufacturer: engineProfile.manufacturer,
+      model: engineProfile.model,
+      supportedPids: engineProfile.supportedPids
+    })
 
     // Initialize fuel consumption tracking if enabled
     if (options.monitoring.calculateFuelConsumption) {
@@ -42,6 +51,7 @@ module.exports = function (app) {
         startTime: Date.now(),
         samples: []
       }
+      app.debug('Fuel consumption tracking enabled')
     }
 
     // Create OBD2 connection
@@ -58,11 +68,23 @@ module.exports = function (app) {
       })
 
       obd2Connection.on('data', (pidData) => {
+        app.debug('Received PID data', pidData)
         handleOBD2Data(pidData, options)
       })
 
       obd2Connection.on('error', (error) => {
-        app.error(`OBD2 Connection Error: ${error.message}`)
+        app.error('OBD2 Connection Error', {
+          message: error.message,
+          stack: error.stack
+        })
+      })
+      
+      obd2Connection.on('connected', () => {
+        app.debug('OBD2 adapter connected')
+      })
+      
+      obd2Connection.on('disconnected', () => {
+        app.debug('OBD2 adapter disconnected')
       })
 
       obd2Connection.connect()
@@ -111,9 +133,17 @@ module.exports = function (app) {
     enabledPids.push('5C', '04', '0F', '2F') // Oil temp, load, intake temp, fuel level
     
     // Filter by what the engine actually supports
-    return enabledPids.filter(pid => 
+    const filteredPids = enabledPids.filter(pid => 
       engineProfile.supportedPids.includes(pid)
     )
+    
+    app.debug('Enabled PIDs', {
+      requested: enabledPids,
+      supported: engineProfile.supportedPids,
+      filtered: filteredPids
+    })
+    
+    return filteredPids
   }
 
   function handleOBD2Data(pidData, options) {
@@ -130,6 +160,13 @@ module.exports = function (app) {
       app.debug(`No SignalK mapping for PID ${pid}`)
       return
     }
+    
+    app.debug('Sending SignalK delta', {
+      pid,
+      path: signalkData.path,
+      value: signalkData.value,
+      unit: signalkData.unit
+    })
 
     // Send delta to SignalK
     app.handleMessage(plugin.id, {

@@ -31,8 +31,8 @@
         "batchMode": {
           "type": "boolean",
           "title": "Batch Mode",
-          "description": "Request multiple PIDs in a single query for faster updates",
-          "default": true
+          "description": "Request multiple PIDs in a single query for faster updates (disable if having connection issues)",
+          "default": false
         },
         "maxBatchSize": {
           "type": "number",

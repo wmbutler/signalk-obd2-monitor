@@ -25,29 +25,48 @@ class OBD2Connection extends EventEmitter {
 
   connect() {
     try {
+      this.logger.info('Attempting to connect to OBD2 adapter', {
+        port: this.portPath,
+        baudRate: this.baudRate
+      })
+      
       this.port = new SerialPort({
         path: this.portPath,
         baudRate: this.baudRate
       })
 
       this.port.on('open', () => {
+        this.logger.info('Serial port opened successfully')
         this.emit('connected')
         this.initializeOBD()
       })
 
       this.port.on('data', (data) => {
+        this.logger.debug('Raw data received', { 
+          data: data.toString(), 
+          hex: data.toString('hex') 
+        })
         this.handleData(data)
       })
 
       this.port.on('error', (err) => {
+        this.logger.error('Serial port error', { 
+          error: err.message,
+          port: this.portPath 
+        })
         this.emit('error', err)
       })
 
       this.port.on('close', () => {
+        this.logger.info('Serial port closed')
         this.emit('disconnected')
         this.initialized = false
       })
     } catch (error) {
+      this.logger.error('Failed to create serial port', { 
+        error: error.message,
+        port: this.portPath 
+      })
       this.emit('error', error)
     }
   }
@@ -60,17 +79,53 @@ class OBD2Connection extends EventEmitter {
   }
 
   initializeOBD() {
+    this.logger.info('Starting OBD2 initialization sequence')
+    
     // Send initialization commands
-    setTimeout(() => this.sendCommand('ATZ'), 500)      // Reset
-    setTimeout(() => this.sendCommand('ATE0'), 2000)    // Echo off
-    setTimeout(() => this.sendCommand('ATL0'), 3000)    // Linefeeds off
-    setTimeout(() => this.sendCommand('ATS0'), 4000)    // Spaces off
-    setTimeout(() => this.sendCommand('ATH0'), 5000)    // Headers off
-    setTimeout(() => this.sendCommand('ATSP0'), 6000)   // Auto protocol
+    setTimeout(() => {
+      this.logger.info('Sending ATZ (reset)')
+      this.sendCommand('ATZ')
+    }, 500)
+    
+    setTimeout(() => {
+      this.logger.info('Sending ATE0 (echo off)')
+      this.sendCommand('ATE0')
+    }, 2000)
+    
+    setTimeout(() => {
+      this.logger.info('Sending ATL0 (linefeeds off)')
+      this.sendCommand('ATL0')
+    }, 3000)
+    
+    setTimeout(() => {
+      this.logger.info('Sending ATS0 (spaces off)')
+      this.sendCommand('ATS0')
+    }, 4000)
+    
+    setTimeout(() => {
+      this.logger.info('Sending ATH0 (headers off)')
+      this.sendCommand('ATH0')
+    }, 5000)
+    
+    setTimeout(() => {
+      this.logger.info('Sending ATSP0 (auto protocol)')
+      this.sendCommand('ATSP0')
+    }, 6000)
+    
+    setTimeout(() => {
+      this.logger.info('Sending test query 010C (RPM)')
+      this.sendCommand('010C')
+    }, 7000)
+    
     setTimeout(() => {
       this.initialized = true
+      this.logger.info('OBD2 initialization complete', {
+        enabledPids: this.enabledPids,
+        batchMode: this.batchMode,
+        maxBatchSize: this.maxBatchSize
+      })
       this.emit('initialized')
-    }, 7000)
+    }, 8000)
   }
 
   sendCommand(command) {
@@ -113,6 +168,14 @@ class OBD2Connection extends EventEmitter {
   }
 
   requestPidBatch() {
+    // If batch mode has failed before, fall back to single mode
+    if (this.batchModeFailed) {
+      this.logger.info('Batch mode failed previously, using single PID mode')
+      this.batchMode = false
+      this.requestSinglePid()
+      return
+    }
+    
     // Calculate how many PIDs we can request in this batch
     const remainingPids = this.enabledPids.length - this.currentPidIndex
     const batchSize = Math.min(this.maxBatchSize, remainingPids)
@@ -143,6 +206,12 @@ class OBD2Connection extends EventEmitter {
     this.awaitingResponse = true
     this.setResponseTimeout()
     
+    // Store batch info for error handling
+    this.currentBatch = {
+      pids: pidsInBatch,
+      command: command
+    }
+    
     // Move index forward by batch size
     this.currentPidIndex = (this.currentPidIndex + batchSize) % this.enabledPids.length
   }
@@ -155,14 +224,25 @@ class OBD2Connection extends EventEmitter {
     
     // Set a timeout for response
     this.responseTimeout = setTimeout(() => {
-      this.logger.warn('Response timeout - no data received')
+      this.logger.warn('Response timeout - no data received', {
+        lastCommand: this.lastCommand,
+        batchMode: this.batchMode
+      })
+      
+      // If batch mode timed out, try falling back to single mode
+      if (this.batchMode && this.currentBatch) {
+        this.logger.warn('Batch mode timeout, disabling batch mode')
+        this.batchModeFailed = true
+        this.batchMode = false
+      }
+      
       this.awaitingResponse = false
       
       // If in continuous mode, try next request
       if (this.continuousMode) {
         this.requestNextPid()
       }
-    }, 500) // 500ms timeout
+    }, 1000) // 1 second timeout (increased for batch mode)
   }
 
   clearResponseTimeout() {
@@ -174,6 +254,11 @@ class OBD2Connection extends EventEmitter {
 
   handleData(data) {
     this.buffer += data.toString()
+    
+    this.logger.debug('Buffer state', { 
+      buffer: this.buffer,
+      hasPrompt: this.buffer.includes('>')
+    })
     
     // Look for complete responses ending with '>'
     if (this.buffer.includes('>')) {
@@ -190,9 +275,16 @@ class OBD2Connection extends EventEmitter {
         }
       }
       
+      this.logger.debug('Parsed responses', { 
+        responses,
+        count: responses.length 
+      })
+      
       // Process all responses
       if (responses.length > 0) {
         this.processBatchResponse(responses)
+      } else {
+        this.logger.warn('No valid responses found in buffer')
       }
       
       // Clear buffer
@@ -200,12 +292,18 @@ class OBD2Connection extends EventEmitter {
       
       // If in continuous mode, immediately request next batch
       if (this.continuousMode && this.initialized) {
+        this.logger.debug('Scheduling next PID request')
         setImmediate(() => this.requestNextPid())
       }
     }
   }
 
   processBatchResponse(responses) {
+    this.logger.debug('Processing batch response', { 
+      responseCount: responses.length,
+      responses 
+    })
+    
     // Check if this is a multi-line response (batch mode)
     const dataResponses = responses.filter(r => r.startsWith('41'))
     
@@ -213,9 +311,31 @@ class OBD2Connection extends EventEmitter {
       // Handle error responses
       if (responses.some(r => r.includes('NO DATA'))) {
         this.logger.warn('No data received', { responses })
+      } else if (responses.some(r => r.includes('UNABLE TO CONNECT'))) {
+        this.logger.error('Unable to connect to ECU', { responses })
+      } else if (responses.some(r => r.includes('CAN ERROR'))) {
+        this.logger.error('CAN bus error', { responses })
+      } else if (responses.some(r => r.includes('?'))) {
+        this.logger.error('Invalid command', { 
+          responses,
+          lastCommand: this.lastCommand 
+        })
+        // If batch mode failed with invalid command, disable it
+        if (this.batchMode && this.currentBatch) {
+          this.logger.warn('Batch command not supported, disabling batch mode')
+          this.batchModeFailed = true
+          this.batchMode = false
+        }
+      } else {
+        this.logger.warn('No valid data responses', { responses })
       }
       return
     }
+    
+    this.logger.info('Found data responses', { 
+      count: dataResponses.length,
+      dataResponses 
+    })
     
     // Process each data line
     dataResponses.forEach(response => {
