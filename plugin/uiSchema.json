@@ -8,7 +8,14 @@
     },
     "updateInterval": {
       "ui:widget": "range",
-      "ui:help": "How frequently to request data from the engine"
+      "ui:help": "This setting is deprecated - the plugin now uses continuous querying for faster updates"
+    },
+    "batchMode": {
+      "ui:help": "Enable batch mode to request multiple PIDs in a single query. This significantly reduces delays between value updates."
+    },
+    "maxBatchSize": {
+      "ui:widget": "range",
+      "ui:help": "Number of PIDs to request per batch. Most OBD2 adapters support up to 6 PIDs per request."
     }
   },
   "engineManufacturer": {

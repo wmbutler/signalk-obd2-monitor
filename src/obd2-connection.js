@@ -16,6 +16,11 @@ class OBD2Connection extends EventEmitter {
     this.buffer = ''
     this.logger = new Logger(options.logging || {})
     this.lastCommand = null
+    this.batchMode = options.batchMode !== false // Default to true
+    this.maxBatchSize = options.maxBatchSize || 6 // Most adapters support 6 PIDs per request
+    this.awaitingResponse = false
+    this.responseTimeout = null
+    this.continuousMode = options.continuousMode !== false // Default to true
   }
 
   connect() {
@@ -48,6 +53,7 @@ class OBD2Connection extends EventEmitter {
   }
 
   disconnect() {
+    this.clearResponseTimeout()
     if (this.port && this.port.isOpen) {
       this.port.close()
     }
@@ -78,10 +84,18 @@ class OBD2Connection extends EventEmitter {
   }
 
   requestNextPid() {
-    if (!this.initialized || this.enabledPids.length === 0) {
+    if (!this.initialized || this.enabledPids.length === 0 || this.awaitingResponse) {
       return
     }
 
+    if (this.batchMode) {
+      this.requestPidBatch()
+    } else {
+      this.requestSinglePid()
+    }
+  }
+
+  requestSinglePid() {
     const pid = this.enabledPids[this.currentPidIndex]
     const command = '01' + pid
     
@@ -91,30 +105,122 @@ class OBD2Connection extends EventEmitter {
     }
     
     this.sendCommand(command)
+    this.awaitingResponse = true
+    this.setResponseTimeout()
     
     // Move to next PID for next request
     this.currentPidIndex = (this.currentPidIndex + 1) % this.enabledPids.length
+  }
+
+  requestPidBatch() {
+    // Calculate how many PIDs we can request in this batch
+    const remainingPids = this.enabledPids.length - this.currentPidIndex
+    const batchSize = Math.min(this.maxBatchSize, remainingPids)
+    
+    // Build the batch command
+    let command = '01'
+    const pidsInBatch = []
+    
+    for (let i = 0; i < batchSize; i++) {
+      const pidIndex = (this.currentPidIndex + i) % this.enabledPids.length
+      const pid = this.enabledPids[pidIndex]
+      command += pid
+      pidsInBatch.push(pid)
+    }
+    
+    this.logger.info('Requesting PID batch', { 
+      pids: pidsInBatch, 
+      command,
+      batchSize 
+    })
+    
+    // Check if RPM is in this batch
+    if (pidsInBatch.includes('0C')) {
+      this.logger.info('RPM included in batch request', { command })
+    }
+    
+    this.sendCommand(command)
+    this.awaitingResponse = true
+    this.setResponseTimeout()
+    
+    // Move index forward by batch size
+    this.currentPidIndex = (this.currentPidIndex + batchSize) % this.enabledPids.length
+  }
+
+  setResponseTimeout() {
+    // Clear any existing timeout
+    if (this.responseTimeout) {
+      clearTimeout(this.responseTimeout)
+    }
+    
+    // Set a timeout for response
+    this.responseTimeout = setTimeout(() => {
+      this.logger.warn('Response timeout - no data received')
+      this.awaitingResponse = false
+      
+      // If in continuous mode, try next request
+      if (this.continuousMode) {
+        this.requestNextPid()
+      }
+    }, 500) // 500ms timeout
+  }
+
+  clearResponseTimeout() {
+    if (this.responseTimeout) {
+      clearTimeout(this.responseTimeout)
+      this.responseTimeout = null
+    }
   }
 
   handleData(data) {
     this.buffer += data.toString()
     
     // Look for complete responses ending with '>'
-    const lines = this.buffer.split(/[\r\n]+/)
-    
-    for (let i = 0; i < lines.length - 1; i++) {
-      const line = lines[i].trim()
-      if (line.length > 0 && line !== '>') {
-        this.processResponse(line)
+    if (this.buffer.includes('>')) {
+      this.clearResponseTimeout()
+      this.awaitingResponse = false
+      
+      const lines = this.buffer.split(/[\r\n]+/)
+      const responses = []
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim()
+        if (line.length > 0 && line !== '>' && !line.startsWith('SEARCHING')) {
+          responses.push(line)
+        }
+      }
+      
+      // Process all responses
+      if (responses.length > 0) {
+        this.processBatchResponse(responses)
+      }
+      
+      // Clear buffer
+      this.buffer = ''
+      
+      // If in continuous mode, immediately request next batch
+      if (this.continuousMode && this.initialized) {
+        setImmediate(() => this.requestNextPid())
       }
     }
+  }
+
+  processBatchResponse(responses) {
+    // Check if this is a multi-line response (batch mode)
+    const dataResponses = responses.filter(r => r.startsWith('41'))
     
-    // Keep the last incomplete line in the buffer
-    if (this.buffer.includes('>')) {
-      this.buffer = ''
-    } else {
-      this.buffer = lines[lines.length - 1]
+    if (dataResponses.length === 0) {
+      // Handle error responses
+      if (responses.some(r => r.includes('NO DATA'))) {
+        this.logger.warn('No data received', { responses })
+      }
+      return
     }
+    
+    // Process each data line
+    dataResponses.forEach(response => {
+      this.processResponse(response)
+    })
   }
 
   processResponse(response) {

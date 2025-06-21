@@ -11,6 +11,8 @@ A comprehensive SignalK plugin for monitoring marine engines via OBD2 interface 
 - **SignalK Integration**: Full integration with SignalK paths and notifications
 - **Auto-Discovery**: Automatic PID discovery for supported engines
 - **Comprehensive Logging**: Detailed logging of all OBD2 queries with special RPM tracking
+- **Batch Querying**: Request multiple PIDs in a single query for faster updates
+- **Continuous Mode**: Automatic continuous querying without delays between values
 
 ## Supported Engine Manufacturers
 
@@ -70,7 +72,8 @@ A comprehensive SignalK plugin for monitoring marine engines via OBD2 interface 
 ### Connection Settings
 - **Serial Port**: Select your OBD2 adapter port (e.g., `/dev/rfcomm0`, `/dev/ttyUSB0`)
 - **Baud Rate**: Usually 9600 for most OBD2 adapters
-- **Update Interval**: How often to poll for data (0.5-10 seconds)
+- **Batch Mode**: Enable to request multiple PIDs at once (recommended)
+- **Max Batch Size**: Number of PIDs per batch (1-6, default 6)
 
 ### Engine Selection
 1. Select your engine manufacturer from the dropdown
@@ -219,6 +222,12 @@ MIT License - see LICENSE file for details
 - SignalK Slack channel: #obd2-monitor
 
 ## Changelog
+
+### v1.2.0
+- Added batch querying for multiple PIDs in single request
+- Implemented continuous mode for zero-delay updates
+- Removed interval-based polling in favor of continuous querying
+- Significantly improved data update speed
 
 ### v1.1.0
 - Added comprehensive logging system with automatic rotation

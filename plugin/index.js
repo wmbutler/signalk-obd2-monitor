@@ -51,7 +51,10 @@ module.exports = function (app) {
         baudRate: options.connection.baudRate,
         engineProfile: engineProfile,
         enabledPids: getEnabledPids(options, engineProfile),
-        logging: options.logging || {}
+        logging: options.logging || {},
+        batchMode: options.connection.batchMode !== false,
+        maxBatchSize: options.connection.maxBatchSize || 6,
+        continuousMode: true
       })
 
       obd2Connection.on('data', (pidData) => {
@@ -64,10 +67,11 @@ module.exports = function (app) {
 
       obd2Connection.connect()
 
-      // Set up polling interval
-      updateInterval = setInterval(() => {
+      // Start continuous querying after initialization
+      obd2Connection.on('initialized', () => {
+        app.debug('OBD2 initialized, starting continuous queries')
         obd2Connection.requestNextPid()
-      }, options.connection.updateInterval * 1000)
+      })
 
     } catch (error) {
       app.error(`Failed to initialize OBD2 connection: ${error.message}`)
@@ -77,11 +81,6 @@ module.exports = function (app) {
 
   plugin.stop = function () {
     app.debug('Stopping OBD2 Engine Monitor plugin')
-    
-    if (updateInterval) {
-      clearInterval(updateInterval)
-      updateInterval = null
-    }
 
     if (obd2Connection) {
       obd2Connection.disconnect()

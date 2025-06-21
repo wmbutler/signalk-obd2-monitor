@@ -23,10 +23,24 @@
         "updateInterval": {
           "type": "number",
           "title": "Update Interval (seconds)",
-          "description": "How often to poll for new data",
+          "description": "How often to poll for new data (deprecated - continuous mode is now used)",
           "default": 1,
           "minimum": 0.5,
           "maximum": 10
+        },
+        "batchMode": {
+          "type": "boolean",
+          "title": "Batch Mode",
+          "description": "Request multiple PIDs in a single query for faster updates",
+          "default": true
+        },
+        "maxBatchSize": {
+          "type": "number",
+          "title": "Maximum Batch Size",
+          "description": "Maximum number of PIDs to request in a single batch (1-6)",
+          "default": 6,
+          "minimum": 1,
+          "maximum": 6
         }
       }
     },
