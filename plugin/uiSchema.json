@@ -18,56 +18,34 @@
   "engineModel": {
     "ui:widget": "select",
     "ui:help": "Select your specific engine model",
-    "ui:options": {
-      "enumOptions": {
-        "Generic OBD2": [
-          { "value": "standard", "label": "Standard OBD2 PIDs" }
-        ],
-        "Hyundai": [
-          { "value": "seasall-s270", "label": "SeasAll S270" },
-          { "value": "seasall-s250", "label": "SeasAll S250" },
-          { "value": "seasall-r200", "label": "SeasAll R200" }
-        ],
-        "Yanmar": [
-          { "value": "4jh", "label": "4JH Series" },
-          { "value": "6ly", "label": "6LY Series" },
-          { "value": "8lv", "label": "8LV Series" }
-        ],
-        "Volvo Penta": [
-          { "value": "d2-75", "label": "D2-75" },
-          { "value": "d4-300", "label": "D4-300" },
-          { "value": "d6-400", "label": "D6-400" }
-        ],
-        "Mercury": [
-          { "value": "verado-350", "label": "Verado 350" },
-          { "value": "diesel-tdi-4.2", "label": "Diesel TDI 4.2" }
-        ],
-        "Caterpillar": [
-          { "value": "c7", "label": "C7 Marine" },
-          { "value": "c12", "label": "C12 Marine" },
-          { "value": "c18", "label": "C18 Marine" }
-        ],
-        "Cummins": [
-          { "value": "qsb6.7", "label": "QSB 6.7" },
-          { "value": "qsc8.3", "label": "QSC 8.3" },
-          { "value": "qsl9", "label": "QSL 9" }
-        ],
-        "John Deere": [
-          { "value": "4045", "label": "PowerTech 4045" },
-          { "value": "6068", "label": "PowerTech 6068" },
-          { "value": "6090", "label": "PowerTech 6090" }
-        ],
-        "MAN": [
-          { "value": "i6-730", "label": "i6-730" },
-          { "value": "i6-800", "label": "i6-800" },
-          { "value": "v8-1000", "label": "V8-1000" }
-        ],
-        "MTU": [
-          { "value": "series-2000", "label": "Series 2000" },
-          { "value": "series-4000", "label": "Series 4000" }
-        ]
-      }
-    }
+    "ui:enumOptions": [
+      { "value": "generic-standard", "label": "Generic - Standard OBD2 PIDs" },
+      { "value": "hyundai-seasall-s270", "label": "Hyundai - SeasAll S270" },
+      { "value": "hyundai-seasall-s250", "label": "Hyundai - SeasAll S250" },
+      { "value": "hyundai-seasall-r200", "label": "Hyundai - SeasAll R200" },
+      { "value": "yanmar-4jh", "label": "Yanmar - 4JH Series" },
+      { "value": "yanmar-6ly", "label": "Yanmar - 6LY Series" },
+      { "value": "yanmar-8lv", "label": "Yanmar - 8LV Series" },
+      { "value": "volvo-penta-d2-75", "label": "Volvo Penta - D2-75" },
+      { "value": "volvo-penta-d4-300", "label": "Volvo Penta - D4-300" },
+      { "value": "volvo-penta-d6-400", "label": "Volvo Penta - D6-400" },
+      { "value": "mercury-verado-350", "label": "Mercury - Verado 350" },
+      { "value": "mercury-diesel-tdi-4.2", "label": "Mercury - Diesel TDI 4.2" },
+      { "value": "caterpillar-c7", "label": "Caterpillar - C7 Marine" },
+      { "value": "caterpillar-c12", "label": "Caterpillar - C12 Marine" },
+      { "value": "caterpillar-c18", "label": "Caterpillar - C18 Marine" },
+      { "value": "cummins-qsb6.7", "label": "Cummins - QSB 6.7" },
+      { "value": "cummins-qsc8.3", "label": "Cummins - QSC 8.3" },
+      { "value": "cummins-qsl9", "label": "Cummins - QSL 9" },
+      { "value": "john-deere-4045", "label": "John Deere - PowerTech 4045" },
+      { "value": "john-deere-6068", "label": "John Deere - PowerTech 6068" },
+      { "value": "john-deere-6090", "label": "John Deere - PowerTech 6090" },
+      { "value": "man-i6-730", "label": "MAN - i6-730" },
+      { "value": "man-i6-800", "label": "MAN - i6-800" },
+      { "value": "man-v8-1000", "label": "MAN - V8-1000" },
+      { "value": "mtu-series-2000", "label": "MTU - Series 2000" },
+      { "value": "mtu-series-4000", "label": "MTU - Series 4000" }
+    ]
   },
   "engineInstance": {
     "ui:help": "Which engine is this monitoring?"

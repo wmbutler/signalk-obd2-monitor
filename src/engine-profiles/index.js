@@ -18,10 +18,54 @@ module.exports = {
   /**
    * Get a specific engine profile
    * @param {string} manufacturer - The engine manufacturer
-   * @param {string} model - The engine model
+   * @param {string} model - The engine model (can be in format "manufacturer-model")
    * @returns {Object} The engine profile with manufacturer and model info
    */
   getProfile: function(manufacturer, model) {
+    // Handle new flat format (e.g., "hyundai-seasall-s270")
+    if (model && model.includes('-')) {
+      // Map flat manufacturer prefixes to full names
+      const manufacturerMap = {
+        'generic': 'Generic OBD2',
+        'hyundai': 'Hyundai',
+        'yanmar': 'Yanmar',
+        'volvo-penta': 'Volvo Penta',
+        'mercury': 'Mercury',
+        'caterpillar': 'Caterpillar',
+        'cummins': 'Cummins',
+        'john-deere': 'John Deere',
+        'man': 'MAN',
+        'mtu': 'MTU'
+      }
+      
+      // Find which manufacturer prefix matches
+      let fullManufacturer = null
+      let flatModel = null
+      
+      for (const [prefix, fullName] of Object.entries(manufacturerMap)) {
+        if (model.startsWith(prefix + '-')) {
+          fullManufacturer = fullName
+          flatModel = model.substring(prefix.length + 1)
+          break
+        }
+      }
+      
+      if (!fullManufacturer) {
+        fullManufacturer = manufacturer
+      }
+      
+      // Try to find the profile with the parsed values
+      if (profiles[fullManufacturer] && profiles[fullManufacturer][flatModel]) {
+        return {
+          manufacturer: fullManufacturer,
+          model: profiles[fullManufacturer][flatModel].model,
+          supportedPids: profiles[fullManufacturer][flatModel].supportedPids,
+          customMappings: profiles[fullManufacturer][flatModel].customMappings || {}
+        }
+      }
+    }
+    
+    // Original logic for backward compatibility
     if (profiles[manufacturer] && profiles[manufacturer][model]) {
       return {
         manufacturer: manufacturer,

@@ -50,7 +50,36 @@
     "engineModel": {
       "type": "string",
       "title": "Engine Model",
-      "description": "Select your specific engine model"
+      "description": "Select your specific engine model",
+      "enum": [
+        "generic-standard",
+        "hyundai-seasall-s270",
+        "hyundai-seasall-s250",
+        "hyundai-seasall-r200",
+        "yanmar-4jh",
+        "yanmar-6ly",
+        "yanmar-8lv",
+        "volvo-penta-d2-75",
+        "volvo-penta-d4-300",
+        "volvo-penta-d6-400",
+        "mercury-verado-350",
+        "mercury-diesel-tdi-4.2",
+        "caterpillar-c7",
+        "caterpillar-c12",
+        "caterpillar-c18",
+        "cummins-qsb6.7",
+        "cummins-qsc8.3",
+        "cummins-qsl9",
+        "john-deere-4045",
+        "john-deere-6068",
+        "john-deere-6090",
+        "man-i6-730",
+        "man-i6-800",
+        "man-v8-1000",
+        "mtu-series-2000",
+        "mtu-series-4000"
+      ],
+      "default": "generic-standard"
     },
     "engineInstance": {
       "type": "string",
