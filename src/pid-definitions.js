@@ -257,6 +257,19 @@ const pidDefinitions = {
     bytes: 2,
     unit: 'mg/stroke',
     convert: (bytes) => ((bytes[0] * 256) + bytes[1]) / 32
+  },
+  // Mode 22 PIDs (Manufacturer specific - Hyundai)
+  '22:0545': {
+    name: 'Fuel consumption (Hyundai)',
+    bytes: 2,
+    unit: 'L/h',
+    convert: (bytes) => ((bytes[0] * 256) + bytes[1]) * 0.01
+  },
+  '22:0045': {
+    name: 'Fuel consumption (Hyundai alt)',
+    bytes: 2,
+    unit: 'L/h',
+    convert: (bytes) => ((bytes[0] * 256) + bytes[1]) * 0.01
   }
 }
 

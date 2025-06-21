@@ -45,7 +45,7 @@ module.exports = function (app) {
     })
 
     // Initialize fuel consumption tracking if any fuel flow PID is supported
-    const fuelFlowPids = ['5E', '9E', 'A2']
+    const fuelFlowPids = ['5E', '9E', 'A2', '22:0545', '22:0045']
     const supportedFuelPid = fuelFlowPids.find(pid => engineProfile.supportedPids.includes(pid))
     
     if (supportedFuelPid) {
@@ -170,7 +170,7 @@ module.exports = function (app) {
     // }
 
     // Track fuel consumption automatically if it's a fuel flow PID
-    if (fuelConsumptionTracker && (pid === '5E' || pid === '9E' || pid === 'A2')) {
+    if (fuelConsumptionTracker && (pid === '5E' || pid === '9E' || pid === 'A2' || pid === '22:0545' || pid === '22:0045')) {
       updateFuelConsumption(signalkData.value, pid)
     }
 
@@ -189,6 +189,9 @@ module.exports = function (app) {
       const cylinders = 4 // Would need actual cylinder count
       fuelRate = (fuelRate * rpm * cylinders * 60) / (2 * 1000000) // Convert to L/h
     }
+    
+    // Mode 22 PIDs already provide L/h, but SignalK expects m³/s
+    // The conversion is handled in the SignalK mapper
     
     const now = Date.now()
     fuelConsumptionTracker.samples.push({

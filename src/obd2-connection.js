@@ -135,7 +135,17 @@ class OBD2Connection extends EventEmitter {
 
   requestSinglePid() {
     const pid = this.enabledPids[this.currentPidIndex]
-    const command = '01' + pid
+    
+    // Check if this is a Mode 22 PID (starts with 22:)
+    let command
+    if (pid.startsWith('22:')) {
+      // Mode 22 format: 22:XXXX
+      const mode22Pid = pid.substring(3)
+      command = '22' + mode22Pid
+    } else {
+      // Standard Mode 01
+      command = '01' + pid
+    }
     
     // Log RPM query specifically
     if (pid === '0C') {
@@ -156,6 +166,25 @@ class OBD2Connection extends EventEmitter {
       this.app.debug('Batch mode failed previously, using single PID mode')
       this.batchMode = false
       this.requestSinglePid()
+      return
+    }
+    
+    // Check if any PIDs in the current batch are Mode 22
+    let hasMode22 = false
+    for (let i = 0; i < this.maxBatchSize && (this.currentPidIndex + i) < this.enabledPids.length; i++) {
+      const pidIndex = (this.currentPidIndex + i) % this.enabledPids.length
+      if (this.enabledPids[pidIndex].startsWith('22:')) {
+        hasMode22 = true
+        break
+      }
+    }
+    
+    // Mode 22 PIDs cannot be batched with Mode 01 PIDs
+    if (hasMode22) {
+      this.app.debug('Mode 22 PID detected, using single PID mode for this request')
+      this.batchMode = false
+      this.requestSinglePid()
+      this.batchMode = true // Re-enable for next iteration
       return
     }
     
@@ -272,7 +301,7 @@ class OBD2Connection extends EventEmitter {
     this.app.debug(`Processing batch response with ${responses.length} lines`)
     
     // Check if this is a multi-line response (batch mode)
-    const dataResponses = responses.filter(r => r.startsWith('41'))
+    const dataResponses = responses.filter(r => r.startsWith('41') || r.startsWith('62'))
     
     if (dataResponses.length === 0) {
       // Handle error responses
@@ -376,10 +405,11 @@ class OBD2Connection extends EventEmitter {
   processResponse(response) {
     try {
       // Skip echo and non-data responses
-      if (!response.includes('41') || response.includes('NO DATA')) {
+      if ((!response.includes('41') && !response.includes('62')) || response.includes('NO DATA')) {
         if (response.includes('NO DATA') && this.lastCommand) {
+          const mode = this.lastCommand.substring(0, 2)
           const pid = this.lastCommand.substring(2)
-          this.app.debug(`No data received for PID ${pid} - Command: ${this.lastCommand}, Response: ${response}`)
+          this.app.debug(`No data received for Mode ${mode} PID ${pid} - Command: ${this.lastCommand}, Response: ${response}`)
           
           // Special logging for RPM queries
           if (pid === '0C') {
@@ -394,12 +424,15 @@ class OBD2Connection extends EventEmitter {
       
       // Check if response has spaces
       if (response.includes(' ')) {
-        // Format: "41 XX YY ZZ..."
+        // Format: "41 XX YY ZZ..." or "62 XX XX YY ZZ..."
         parts = response.trim().split(/\s+/)
       } else {
-        // Format: "41XXYYZZ..." - parse as continuous hex string
+        // Format: "41XXYYZZ..." or "62XXXXYYZZ..." - parse as continuous hex string
         const cleanResponse = response.trim()
-        if (cleanResponse.length < 6 || !cleanResponse.startsWith('41')) {
+        const isMode22 = cleanResponse.startsWith('62')
+        const minLength = isMode22 ? 8 : 6 // Mode 22 has 4-digit PIDs
+        
+        if (cleanResponse.length < minLength || (!cleanResponse.startsWith('41') && !cleanResponse.startsWith('62'))) {
           this.app.debug(`Invalid OBD2 response format: ${response}`)
           return
         }
@@ -411,13 +444,26 @@ class OBD2Connection extends EventEmitter {
         }
       }
       
-      if (parts.length < 3 || parts[0] !== '41') {
+      const responseMode = parts[0]
+      if (parts.length < 3 || (responseMode !== '41' && responseMode !== '62')) {
         this.app.debug(`Invalid OBD2 response format: ${response} (parsed parts: ${parts.join(', ')})`)
         return
       }
 
-      const pid = parts[1]
-      const valueBytes = parts.slice(2).map(byte => parseInt(byte, 16))
+      let pid, valueBytes
+      if (responseMode === '62') {
+        // Mode 22 response: 62 XX XX YY ZZ...
+        if (parts.length < 4) {
+          this.app.debug(`Invalid Mode 22 response format: ${response}`)
+          return
+        }
+        pid = '22:' + parts[1] + parts[2] // Reconstruct Mode 22 PID format
+        valueBytes = parts.slice(3).map(byte => parseInt(byte, 16))
+      } else {
+        // Mode 01 response: 41 XX YY ZZ...
+        pid = parts[1]
+        valueBytes = parts.slice(2).map(byte => parseInt(byte, 16))
+      }
       
       // Get PID definition
       const pidDef = PidDefinitions.getPidDefinition(pid)

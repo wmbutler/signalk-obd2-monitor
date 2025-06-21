@@ -104,6 +104,17 @@ const pidToSignalKMap = {
     path: 'propulsion.{instance}.fuel.cylinderRate',
     unit: 'kg/s',
     convert: (value) => value * 0.000001 // Convert mg/stroke to kg/s (approximate)
+  },
+  // Mode 22 PIDs (Hyundai specific)
+  '22:0545': {
+    path: 'propulsion.{instance}.fuel.rate',
+    unit: 'm3/s',
+    convert: (value) => value * 0.001 / 3600 // Convert L/h to m³/s
+  },
+  '22:0045': {
+    path: 'propulsion.{instance}.fuel.rate',
+    unit: 'm3/s',
+    convert: (value) => value * 0.001 / 3600 // Convert L/h to m³/s
   }
 }
 

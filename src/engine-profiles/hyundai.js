@@ -18,7 +18,8 @@ module.exports = {
         '42', // Control module voltage
         '46', // Ambient air temperature
         '5C', // Engine oil temperature
-        'A2'  // Cylinder fuel rate
+        '22:0545', // Fuel consumption (Hyundai Mode 22)
+        '22:0045'  // Fuel consumption (Hyundai Mode 22 alt)
       ],
       customMappings: {
         // Custom conversion for this specific engine if needed
@@ -28,7 +29,7 @@ module.exports = {
       model: 'SeasAll S250',
       supportedPids: [
         '04', '05', '0C', '0F', '11', '1F', '22', '23',
-        '2F', '33', '42', '46', '5C', 'A2'
+        '2F', '33', '42', '46', '5C', '22:0545', '22:0045'
       ],
       customMappings: {}
     },
@@ -36,7 +37,7 @@ module.exports = {
       model: 'SeasAll R200',
       supportedPids: [
         '04', '05', '0C', '0F', '11', '1F', '2F',
-        '33', '42', '46', '5C', 'A2'
+        '33', '42', '46', '5C', '22:0545', '22:0045'
       ],
       customMappings: {}
     }
