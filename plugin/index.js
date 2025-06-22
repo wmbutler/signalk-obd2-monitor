@@ -98,8 +98,7 @@ module.exports = function (app) {
       obd2Connection.on('disconnected', () => {
         app.debug('OBD2 adapter disconnected')
         app.setPluginError('Adapter disconnected')
-        // Send null values for all PIDs when disconnected
-        clearAllPidData(options)
+        // Don't send any updates when disconnected - SignalK will retain last values
       })
       
       obd2Connection.on('stateChange', (change) => {
@@ -217,60 +216,6 @@ module.exports = function (app) {
 
     // Calculate fuel efficiency automatically if we have the needed data
     calculateFuelEfficiency(pid, signalkData)
-  }
-  
-  function clearAllPidData(options) {
-    // Send 0 values for all monitored PIDs when connection is lost
-    const engineProfile = EngineProfiles.getProfile(
-      options.engineManufacturer,
-      options.engineModel
-    )
-    
-    if (!engineProfile) return
-    
-    app.debug('Clearing all PID data - sending 0 values')
-    
-    // Get all PIDs from the engine profile
-    const allPids = engineProfile.supportedPids
-    
-    // Send 0 for each PID's SignalK path
-    allPids.forEach(pid => {
-      // Get the SignalK mapping for this PID
-      const signalkData = SignalKMapper.mapToSignalK(
-        pid, 
-        0, // Send 0 value
-        options.engineInstance || 'port'
-      )
-      
-      if (signalkData) {
-        app.handleMessage(plugin.id, {
-          updates: [{
-            values: [{
-              path: signalkData.path,
-              value: 0 // Set to 0 instead of null
-            }]
-          }]
-        })
-      }
-    })
-    
-    // Also clear fuel consumption data if it was being tracked
-    if (fuelConsumptionTracker) {
-      app.handleMessage(plugin.id, {
-        updates: [{
-          values: [
-            {
-              path: `propulsion.${options.engineInstance || 'port'}.fuel.averageRate`,
-              value: 0
-            },
-            {
-              path: `propulsion.${options.engineInstance || 'port'}.fuel.totalConsumption`,
-              value: 0
-            }
-          ]
-        }]
-      })
-    }
   }
   
   function validateConfiguration(options) {

@@ -258,7 +258,7 @@ MIT License - see LICENSE file for details
 - Removed deprecated `updateInterval` configuration option
 - Added configuration validation with debug messages for invalid schemas
 - Backward compatible with existing configurations containing deprecated fields
-- **Fixed**: Plugin now sends 0 values to SignalK when disconnected
+- **Fixed**: Plugin stops sending updates when disconnected (SignalK retains last values)
 - **Fixed**: Automatic reconnection when serial port closes (e.g., Bluetooth adapter powered off)
 - **Fixed**: Continuous reconnection attempts every 5 seconds when adapter is unavailable
 
