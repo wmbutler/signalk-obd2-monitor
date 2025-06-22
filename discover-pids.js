@@ -51,14 +51,35 @@ class PidDiscovery {
         })
 
         this.port.on('error', (err) => {
-          reject(new Error(`Serial port error: ${err.message}`))
+          // Enhanced error messages
+          if (err.message.includes('Resource busy') || err.message.includes('Access denied')) {
+            reject(new Error(`Serial port ${this.portPath} is busy or access denied. Try:\n` +
+              `  1. Stop SignalK: sudo systemctl stop signalk\n` +
+              `  2. Check what's using the port: lsof ${this.portPath}\n` +
+              `  3. Run with --force flag: node discover-pids.js --force`))
+          } else if (err.message.includes('No such file')) {
+            reject(new Error(`Serial port ${this.portPath} not found. Check:\n` +
+              `  1. Is the adapter plugged in?\n` +
+              `  2. Run: ls /dev/tty* to see available ports\n` +
+              `  3. You may need to use /dev/ttyUSB0 or /dev/ttyACM0`))
+          } else {
+            reject(new Error(`Serial port error: ${err.message}`))
+          }
         })
 
         this.port.on('data', (data) => {
           this.handleData(data)
         })
       } catch (error) {
-        reject(new Error(`Failed to open serial port: ${error.message}`))
+        // Enhanced error messages for constructor errors
+        if (error.message.includes('Resource busy') || error.message.includes('EBUSY')) {
+          reject(new Error(`Serial port ${this.portPath} is busy. Try:\n` +
+            `  1. Stop SignalK: sudo systemctl stop signalk\n` +
+            `  2. Check what's using the port: lsof ${this.portPath}\n` +
+            `  3. Run with --force flag: node discover-pids.js --force`))
+        } else {
+          reject(new Error(`Failed to open serial port: ${error.message}`))
+        }
       }
     })
   }
@@ -552,6 +573,7 @@ program
   .version('1.0.0')
   .option('-p, --port <port>', 'Serial port path')
   .option('-b, --baud <rate>', 'Baud rate', '9600')
+  .option('-f, --force', 'Force close any process using the serial port before connecting')
   .parse(process.argv)
 
 const options = program.opts()
@@ -568,6 +590,53 @@ if (!options.port) {
     console.log('Usage: node discover-pids.js --port /dev/ttyUSB0 [--baud 9600]')
     process.exit(1)
   }
+}
+
+// Force close port if requested
+if (options.force) {
+  console.log(`\n${colors.yellow}Force closing any process using ${options.port}...${colors.reset}`)
+  
+  const { execSync } = require('child_process')
+  
+  try {
+    // Try to find and kill processes using the port
+    if (process.platform === 'linux' || process.platform === 'darwin') {
+      try {
+        // First try lsof to see what's using the port
+        const lsofResult = execSync(`lsof ${options.port} 2>/dev/null || true`, { encoding: 'utf8' })
+        if (lsofResult) {
+          console.log(`Found processes using ${options.port}:`)
+          console.log(lsofResult)
+          
+          // Kill processes using fuser
+          execSync(`fuser -k ${options.port} 2>/dev/null || true`)
+          console.log(`${colors.green}✓ Killed processes using ${options.port}${colors.reset}`)
+        } else {
+          console.log(`No processes found using ${options.port}`)
+        }
+      } catch (e) {
+        // If lsof/fuser aren't available, try alternative method
+        try {
+          // Get the real path of the device
+          const realPath = fs.realpathSync(options.port)
+          execSync(`pkill -f ${realPath} 2>/dev/null || true`)
+          console.log(`${colors.green}✓ Attempted to kill processes using ${realPath}${colors.reset}`)
+        } catch (e2) {
+          console.log(`${colors.yellow}Could not determine processes using port${colors.reset}`)
+        }
+      }
+      
+      // Add a delay to ensure port is released
+      console.log('Waiting for port to be released...')
+      execSync('sleep 2')
+    } else {
+      console.log(`${colors.yellow}Force close not supported on this platform${colors.reset}`)
+    }
+  } catch (error) {
+    console.log(`${colors.yellow}Warning: Could not force close port: ${error.message}${colors.reset}`)
+  }
+  
+  console.log('')
 }
 
 // Create and run discovery
