@@ -98,6 +98,8 @@ module.exports = function (app) {
       obd2Connection.on('disconnected', () => {
         app.debug('OBD2 adapter disconnected')
         app.setPluginError('Adapter disconnected')
+        // Send null values for all PIDs when disconnected
+        clearAllPidData(options)
       })
       
       obd2Connection.on('stateChange', (change) => {
@@ -215,6 +217,60 @@ module.exports = function (app) {
 
     // Calculate fuel efficiency automatically if we have the needed data
     calculateFuelEfficiency(pid, signalkData)
+  }
+  
+  function clearAllPidData(options) {
+    // Send null values for all monitored PIDs when connection is lost
+    const engineProfile = EngineProfiles.getProfile(
+      options.engineManufacturer,
+      options.engineModel
+    )
+    
+    if (!engineProfile) return
+    
+    app.debug('Clearing all PID data - sending null values')
+    
+    // Get all PIDs from the engine profile
+    const allPids = engineProfile.supportedPids
+    
+    // Send null for each PID's SignalK path
+    allPids.forEach(pid => {
+      // Get the SignalK mapping for this PID
+      const signalkData = SignalKMapper.mapToSignalK(
+        pid, 
+        null, // Send null value
+        options.engineInstance || 'port'
+      )
+      
+      if (signalkData) {
+        app.handleMessage(plugin.id, {
+          updates: [{
+            values: [{
+              path: signalkData.path,
+              value: null // Explicitly set to null
+            }]
+          }]
+        })
+      }
+    })
+    
+    // Also clear fuel consumption data if it was being tracked
+    if (fuelConsumptionTracker) {
+      app.handleMessage(plugin.id, {
+        updates: [{
+          values: [
+            {
+              path: `propulsion.${options.engineInstance || 'port'}.fuel.averageRate`,
+              value: null
+            },
+            {
+              path: `propulsion.${options.engineInstance || 'port'}.fuel.totalConsumption`,
+              value: null
+            }
+          ]
+        }]
+      })
+    }
   }
   
   function validateConfiguration(options) {

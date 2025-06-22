@@ -128,6 +128,15 @@ module.exports = {
     // Replace instance placeholder with actual instance
     const path = mapping.path.replace('{instance}', engineInstance)
     
+    // Handle null values - SignalK supports null to indicate no data
+    if (value === null || value === undefined) {
+      return {
+        path: path,
+        value: null,
+        unit: mapping.unit
+      }
+    }
+    
     // Convert value to SignalK units
     const convertedValue = mapping.convert(value)
     

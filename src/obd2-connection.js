@@ -91,6 +91,10 @@ class OBD2Connection extends EventEmitter {
         this.stateManager.onDisconnected()
         this.emit('disconnected')
         this.initialized = false
+        this.port = null
+        
+        // Schedule reconnection attempt
+        this.scheduleReconnect()
       })
     } catch (error) {
       this.app.error(`Failed to create serial port ${this.portPath}: ${error.message}`)
@@ -100,6 +104,30 @@ class OBD2Connection extends EventEmitter {
 
   disconnect() {
     this.clearResponseTimeout()
+    
+    // Clear any pending reconnect
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout)
+      this.reconnectTimeout = null
+    }
+    
+    // Clear any probe timeouts
+    if (this.probeTimeout) {
+      clearTimeout(this.probeTimeout)
+      this.probeTimeout = null
+    }
+    
+    // Clear init stage timeouts
+    if (this.adapterCheckTimeout) {
+      clearTimeout(this.adapterCheckTimeout)
+      this.adapterCheckTimeout = null
+    }
+    
+    if (this.engineCheckTimeout) {
+      clearTimeout(this.engineCheckTimeout)
+      this.engineCheckTimeout = null
+    }
+    
     if (this.port && this.port.isOpen) {
       this.port.close()
     }
@@ -638,14 +666,24 @@ class OBD2Connection extends EventEmitter {
   }
   
   scheduleReconnect() {
+    // Don't schedule if we're already trying to reconnect
     if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout)
+      return
     }
     
     this.app.debug(`Scheduling reconnection attempt in ${this.reconnectDelay}ms`)
     
     this.reconnectTimeout = setTimeout(() => {
+      this.reconnectTimeout = null
       this.app.debug('Attempting to reconnect...')
+      
+      // Reset state before reconnecting
+      this.initialized = false
+      this.initStage = null
+      this.isProbing = false
+      this.buffer = ''
+      this.awaitingResponse = false
+      
       this.connect()
     }, this.reconnectDelay)
   }
