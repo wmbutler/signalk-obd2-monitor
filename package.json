@@ -4,7 +4,11 @@
   "description": "SignalK plugin for monitoring marine engines via OBD2 interface with batch querying, fuel flow monitoring, configurable alarms, and comprehensive logging",
   "main": "plugin/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "discover": "node discover-pids.js"
+  },
+  "bin": {
+    "discover-obd2-pids": "./discover-pids.js"
   },
   "keywords": [
     "signalk-node-server-plugin",
@@ -25,6 +29,7 @@
     "url": "https://github.com/yourusername/signalk-obd2-monitor.git"
   },
   "dependencies": {
+    "commander": "^13.1.0",
     "serialport": "^12.0.0"
   },
   "signalk": {

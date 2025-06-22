@@ -210,6 +210,46 @@ sudo rfcomm bind 0 XX:XX:XX:XX:XX:XX
 
 ## Development
 
+### PID Discovery Tool
+
+The plugin includes a command-line tool to discover which PIDs your engine supports:
+
+```bash
+# Run from the plugin directory
+node discover-pids.js
+
+# Or specify port and baud rate
+node discover-pids.js --port /dev/ttyUSB0 --baud 9600
+
+# Show help
+node discover-pids.js --help
+```
+
+The discovery tool will:
+1. Connect to your OBD2 adapter
+2. Verify the engine is running
+3. Test all standard Mode 01 PIDs (00-FF)
+4. Test common Mode 22 PIDs
+5. Generate a custom engine profile with discovered PIDs
+6. Save the profile to `src/engine-profiles/discovered.js`
+
+**Requirements:**
+- Engine must be running
+- OBD2 adapter must be connected
+- Serial port permissions must be set
+
+The tool shows real-time progress and discovered PIDs:
+```
+Testing PIDs:
+[████████████████████░░░░░░░░░░] 67% (172/256)
+
+Discovered PIDs: 15
+✓ 04 Engine Load
+✓ 05 Coolant Temperature
+✓ 0C RPM
+...
+```
+
 ### Adding Custom Engine Profiles
 
 Edit `src/engine-profiles.js` to add new engine profiles:
@@ -226,6 +266,8 @@ Edit `src/engine-profiles.js` to add new engine profiles:
   }
 }
 ```
+
+Or use the PID discovery tool to automatically generate a profile for your engine.
 
 ### Custom PID Mappings
 
@@ -265,6 +307,7 @@ MIT License - see LICENSE file for details
 - Provides recommendations for optimizing engine profiles
 - Added support for vLinker FS adapter response format
 - Fixed parsing of responses with byte count prefixes and line numbers
+- Added command-line PID discovery tool for creating custom engine profiles
 
 ### v1.4.0
 - Added fault-tolerant connection management

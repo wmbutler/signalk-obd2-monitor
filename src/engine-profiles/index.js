@@ -1,6 +1,14 @@
 // Engine profiles aggregator
 // This module loads all manufacturer profiles and provides a unified interface
 
+// Try to load discovered profile if it exists
+let discoveredProfile = {}
+try {
+  discoveredProfile = require('./discovered')
+} catch (e) {
+  // Discovered profile doesn't exist yet, that's ok
+}
+
 const profiles = {
   'Generic OBD2': require('./generic').models,
   'Hyundai': require('./hyundai').models,
@@ -11,7 +19,8 @@ const profiles = {
   'Cummins': require('./cummins').models,
   'John Deere': require('./john-deere').models,
   'MAN': require('./man').models,
-  'MTU': require('./mtu').models
+  'MTU': require('./mtu').models,
+  'Unknown': discoveredProfile
 }
 
 module.exports = {
@@ -35,7 +44,9 @@ module.exports = {
         'cummins': 'Cummins',
         'john-deere': 'John Deere',
         'man': 'MAN',
-        'mtu': 'MTU'
+        'mtu': 'MTU',
+        'unknown': 'Unknown',
+        'discovered': 'Unknown'
       }
       
       // Find which manufacturer prefix matches
