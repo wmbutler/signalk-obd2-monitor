@@ -107,50 +107,69 @@ class OBD2Connection extends EventEmitter {
 
   initializeOBD() {
     this.app.debug('Starting OBD2 initialization sequence')
+    
+    // Stage 1: Check adapter connectivity
+    this.stateManager.onAdapterCheck()
+    this.checkAdapterConnectivity()
+  }
+  
+  checkAdapterConnectivity() {
+    this.app.debug('Stage 1: Checking adapter connectivity with ATI command')
+    this.initStage = 'adapter_check'
+    this.sendCommand('ATI')
+    
+    // Set timeout for adapter check
+    this.adapterCheckTimeout = setTimeout(() => {
+      this.app.error('Adapter check timeout - no response to ATI command')
+      this.emit('adapterError', 'No response from OBD2 adapter')
+    }, 3000)
+  }
+  
+  checkEngineConnectivity() {
+    this.app.debug('Stage 2: Checking engine connectivity with 0100 command')
+    this.stateManager.onEngineCheck()
+    this.initStage = 'engine_check'
+    this.sendCommand('0100')
+    
+    // Set timeout for engine check
+    this.engineCheckTimeout = setTimeout(() => {
+      this.app.debug('Engine check timeout - engine may be off')
+      this.stateManager.onEngineOff()
+      this.emit('engineOff', 'Engine not responding - may be off')
+      // Start probing mode
+      this.startProbing()
+    }, 3000)
+  }
+  
+  completeInitialization() {
+    this.app.debug('Both adapter and engine verified - completing initialization')
     this.stateManager.onInitializing()
     
-    // Send initialization commands
-    setTimeout(() => {
-      this.app.debug('Sending ATZ (reset)')
-      this.sendCommand('ATZ')
-    }, 500)
+    // Send essential initialization commands with better timing
+    const initCommands = [
+      { cmd: 'ATZ', desc: 'Reset adapter', delay: 0 },
+      { cmd: 'ATE0', desc: 'Echo off', delay: 2000 },
+      { cmd: 'ATH0', desc: 'Headers off', delay: 1000 },
+      { cmd: 'ATSP0', desc: 'Auto protocol', delay: 1000 }
+    ]
     
-    setTimeout(() => {
-      this.app.debug('Sending ATE0 (echo off)')
-      this.sendCommand('ATE0')
-    }, 2000)
+    let totalDelay = 0
+    initCommands.forEach(({ cmd, desc, delay }) => {
+      totalDelay += delay
+      setTimeout(() => {
+        this.app.debug(`Sending ${cmd} (${desc})`)
+        this.sendCommand(cmd)
+      }, totalDelay)
+    })
     
-    setTimeout(() => {
-      this.app.debug('Sending ATL0 (linefeeds off)')
-      this.sendCommand('ATL0')
-    }, 3000)
-    
-    setTimeout(() => {
-      this.app.debug('Sending ATS0 (spaces off)')
-      this.sendCommand('ATS0')
-    }, 4000)
-    
-    setTimeout(() => {
-      this.app.debug('Sending ATH0 (headers off)')
-      this.sendCommand('ATH0')
-    }, 5000)
-    
-    setTimeout(() => {
-      this.app.debug('Sending ATSP0 (auto protocol)')
-      this.sendCommand('ATSP0')
-    }, 6000)
-    
-    setTimeout(() => {
-      this.app.debug('Sending test query 010C (RPM)')
-      this.sendCommand('010C')
-    }, 7000)
-    
+    // Mark as initialized after all commands
     setTimeout(() => {
       this.initialized = true
+      this.initStage = null // Clear init stage
       this.app.debug(`OBD2 initialization complete - PIDs: ${this.enabledPids.join(',')}, Batch: ${this.batchMode}, MaxBatch: ${this.maxBatchSize}`)
       this.stateManager.onInitialized()
       this.emit('initialized')
-    }, 8000)
+    }, totalDelay + 2000)
   }
 
   sendCommand(command) {
@@ -323,8 +342,13 @@ class OBD2Connection extends EventEmitter {
       
       // Process all responses
       if (responses.length > 0) {
-        // Check if this is a probe response
-        if (this.isProbing && this.lastCommand === '0100') {
+        // Handle initialization stage responses
+        if (this.initStage === 'adapter_check') {
+          this.handleAdapterCheckResponse(responses)
+        } else if (this.initStage === 'engine_check') {
+          this.handleEngineCheckResponse(responses)
+        } else if (this.isProbing && this.lastCommand === '0100') {
+          // Check if this is a probe response
           this.handleProbeResponse(responses.join(' '))
         } else {
           this.processBatchResponse(responses)
@@ -628,6 +652,66 @@ class OBD2Connection extends EventEmitter {
   
   getConnectionStatus() {
     return this.stateManager.getStatus()
+  }
+  
+  handleAdapterCheckResponse(responses) {
+    // Clear timeout
+    if (this.adapterCheckTimeout) {
+      clearTimeout(this.adapterCheckTimeout)
+      this.adapterCheckTimeout = null
+    }
+    
+    const response = responses.join(' ')
+    this.app.debug(`Adapter check response: ${response}`)
+    
+    // Check if we got a valid adapter response
+    if (response.includes('ELM327') || response.includes('STN') || response.includes('OBD')) {
+      this.app.debug('Adapter verified successfully')
+      this.stateManager.setAdapterInfo(response)
+      this.emit('adapterVerified', response)
+      
+      // Proceed to engine check
+      setTimeout(() => {
+        this.checkEngineConnectivity()
+      }, 500)
+    } else {
+      this.app.error(`Invalid adapter response: ${response}`)
+      this.emit('adapterError', `Invalid adapter response: ${response}`)
+    }
+  }
+  
+  handleEngineCheckResponse(responses) {
+    // Clear timeout
+    if (this.engineCheckTimeout) {
+      clearTimeout(this.engineCheckTimeout)
+      this.engineCheckTimeout = null
+    }
+    
+    const response = responses.join(' ')
+    this.app.debug(`Engine check response: ${response}`)
+    
+    // Check if we got a valid response to 0100
+    if (response.includes('41 00') || response.includes('4100')) {
+      this.app.debug('Engine communication verified')
+      this.emit('engineVerified')
+      
+      // Complete initialization
+      setTimeout(() => {
+        this.completeInitialization()
+      }, 500)
+    } else if (response.includes('NO DATA')) {
+      this.app.debug('Engine not responding - may be off')
+      this.stateManager.onEngineOff()
+      this.emit('engineOff', 'Engine not responding - may be off')
+      
+      // Start probing mode
+      this.initialized = true // Mark as initialized to allow probing
+      this.initStage = null // Clear init stage
+      this.startProbing()
+    } else {
+      this.app.error(`Unexpected engine check response: ${response}`)
+      this.emit('engineError', `Unexpected response: ${response}`)
+    }
   }
 }
 

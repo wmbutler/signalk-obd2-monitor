@@ -246,13 +246,15 @@ MIT License - see LICENSE file for details
 
 ### v1.4.0
 - Added fault-tolerant connection management
-- Implemented connection state tracking (disconnected, connecting, initializing, active, probing)
-- Added automatic recovery when engine starts after being off
+- Implemented two-stage verification (adapter check, then engine check)
+- Added new connection states: adapter_check, engine_check, engine_off
+- Improved status reporting with color-coded plugin status in SignalK dashboard
 - Distinguished between "engine off" and "adapter disconnected" states
 - Added probe mode that checks adapter connectivity every 2 seconds
 - Added connection status reporting via SignalK paths
 - Added notifications for engine off and adapter disconnected states
 - Improved error handling and automatic reconnection
+- Better initialization timing to prevent timeouts
 - Removed deprecated `updateInterval` configuration option
 - Added configuration validation with debug messages for invalid schemas
 - Backward compatible with existing configurations containing deprecated fields

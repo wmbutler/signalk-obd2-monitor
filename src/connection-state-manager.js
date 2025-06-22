@@ -9,9 +9,12 @@ class ConnectionStateManager extends EventEmitter {
     this.STATES = {
       DISCONNECTED: 'disconnected',
       CONNECTING: 'connecting',
+      ADAPTER_CHECK: 'adapter_check',
+      ENGINE_CHECK: 'engine_check',
       INITIALIZING: 'initializing',
       ACTIVE: 'active',
-      PROBING: 'probing'
+      PROBING: 'probing',
+      ENGINE_OFF: 'engine_off'
     }
     
     // Current state
@@ -52,8 +55,21 @@ class ConnectionStateManager extends EventEmitter {
     this.setState(this.STATES.CONNECTING)
   }
   
+  onAdapterCheck() {
+    this.setState(this.STATES.ADAPTER_CHECK)
+  }
+  
+  onEngineCheck() {
+    this.setState(this.STATES.ENGINE_CHECK)
+  }
+  
   onInitializing() {
     this.setState(this.STATES.INITIALIZING)
+  }
+  
+  onEngineOff() {
+    this.setState(this.STATES.ENGINE_OFF)
+    this.consecutiveFailures = 0
   }
   
   onInitialized() {

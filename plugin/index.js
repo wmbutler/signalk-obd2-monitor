@@ -92,15 +92,42 @@ module.exports = function (app) {
       
       obd2Connection.on('connected', () => {
         app.debug('OBD2 adapter connected')
+        app.setPluginStatus('Connecting to adapter...')
       })
       
       obd2Connection.on('disconnected', () => {
         app.debug('OBD2 adapter disconnected')
+        app.setPluginError('Adapter disconnected')
       })
       
       obd2Connection.on('stateChange', (change) => {
         app.debug('Connection state changed', change)
         reportConnectionStatus(change.newState)
+      })
+      
+      obd2Connection.on('adapterVerified', (info) => {
+        app.debug('Adapter verified:', info)
+        app.setPluginStatus('Adapter connected - Checking engine...')
+      })
+      
+      obd2Connection.on('adapterError', (error) => {
+        app.error('Adapter error:', error)
+        app.setPluginError(`Adapter not detected: ${error}`)
+      })
+      
+      obd2Connection.on('engineVerified', () => {
+        app.debug('Engine communication verified')
+        app.setPluginStatus('Engine online - Initializing...')
+      })
+      
+      obd2Connection.on('engineOff', (message) => {
+        app.debug('Engine off:', message)
+        app.setPluginStatus('Adapter connected - Engine off')
+      })
+      
+      obd2Connection.on('engineError', (error) => {
+        app.error('Engine error:', error)
+        app.setPluginError(`Engine communication error: ${error}`)
       })
 
       obd2Connection.connect()
@@ -270,43 +297,90 @@ module.exports = function (app) {
       }]
     })
     
-    // Send notification if in probe mode
-    if (state === 'probing') {
-      app.handleMessage(plugin.id, {
-        updates: [{
-          values: [{
-            path: 'notifications.obd2.engineOff',
-            value: {
-              state: 'normal',
-              method: ['visual'],
-              message: 'Engine appears to be off - OBD2 adapter is connected but not receiving engine data'
-            }
+    // Update plugin status based on state
+    switch (state) {
+      case 'disconnected':
+        app.setPluginError('Adapter not detected - Check serial port connection')
+        app.handleMessage(plugin.id, {
+          updates: [{
+            values: [{
+              path: 'notifications.obd2.disconnected',
+              value: {
+                state: 'alert',
+                method: ['visual', 'sound'],
+                message: 'OBD2 adapter disconnected - check connection'
+              }
+            }]
           }]
-        }]
-      })
-    } else if (state === 'active') {
-      // Clear the notification when back to active
-      app.handleMessage(plugin.id, {
-        updates: [{
-          values: [{
-            path: 'notifications.obd2.engineOff',
-            value: null
+        })
+        break
+        
+      case 'connecting':
+        app.setPluginStatus('Connecting to adapter...')
+        break
+        
+      case 'adapter_check':
+        app.setPluginStatus('Verifying adapter...')
+        break
+        
+      case 'engine_check':
+        app.setPluginStatus('Checking engine communication...')
+        break
+        
+      case 'initializing':
+        app.setPluginStatus('Initializing OBD2 connection...')
+        break
+        
+      case 'active':
+        app.setPluginStatus('Engine online - Monitoring active')
+        // Clear notifications
+        app.handleMessage(plugin.id, {
+          updates: [{
+            values: [
+              {
+                path: 'notifications.obd2.engineOff',
+                value: null
+              },
+              {
+                path: 'notifications.obd2.disconnected',
+                value: null
+              }
+            ]
           }]
-        }]
-      })
-    } else if (state === 'disconnected') {
-      app.handleMessage(plugin.id, {
-        updates: [{
-          values: [{
-            path: 'notifications.obd2.disconnected',
-            value: {
-              state: 'alert',
-              method: ['visual', 'sound'],
-              message: 'OBD2 adapter disconnected - check connection'
-            }
+        })
+        break
+        
+      case 'probing':
+        app.setPluginStatus('Adapter connected - Engine off (probing)')
+        app.handleMessage(plugin.id, {
+          updates: [{
+            values: [{
+              path: 'notifications.obd2.engineOff',
+              value: {
+                state: 'normal',
+                method: ['visual'],
+                message: 'Engine appears to be off - OBD2 adapter is connected but not receiving engine data'
+              }
+            }]
           }]
-        }]
-      })
+        })
+        break
+        
+      case 'engine_off':
+        app.setPluginStatus('Adapter connected - Engine off')
+        app.handleMessage(plugin.id, {
+          updates: [{
+            values: [{
+              path: 'notifications.obd2.engineOff',
+              value: {
+                state: 'normal',
+                method: ['visual'],
+                message: 'Engine is off - Start engine to begin monitoring'
+              }
+            }]
+          }]
+        })
+        break
     }
   }
 
