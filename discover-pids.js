@@ -459,29 +459,10 @@ class PidDiscovery {
 module.exports = ${JSON.stringify(profile, null, 2)}
 `
     
-    // Check if file exists
-    if (fs.existsSync(outputPath)) {
-      this.log(`\nFile ${outputPath} already exists.`, colors.yellow)
-      const readline = require('readline').createInterface({
-        input: process.stdin,
-        output: process.stdout
-      })
-      
-      readline.question('Overwrite? (y/N): ', (answer) => {
-        readline.close()
-        if (answer.toLowerCase() === 'y') {
-          fs.writeFileSync(outputPath, content)
-          this.log(`✓ Profile saved to ${outputPath}`, colors.green)
-        } else {
-          this.log('Profile not saved.', colors.yellow)
-        }
-        this.showSummary()
-      })
-    } else {
-      fs.writeFileSync(outputPath, content)
-      this.log(`\n✓ Profile saved to ${outputPath}`, colors.green)
-      this.showSummary()
-    }
+    // Always overwrite the file
+    fs.writeFileSync(outputPath, content)
+    this.log(`\n✓ Profile saved to ${outputPath}`, colors.green)
+    this.showSummary()
   }
 
   showSummary() {
