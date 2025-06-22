@@ -28,6 +28,7 @@ class PidDiscovery {
     this.totalPids = 256 // Standard Mode 01 PIDs
     this.adapterInfo = ''
     this.startTime = Date.now()
+    this.initStage = null
   }
 
   log(message, color = '') {
@@ -54,12 +55,50 @@ class PidDiscovery {
         })
 
         this.port.on('data', (data) => {
-          this.buffer += data.toString()
+          this.handleData(data)
         })
       } catch (error) {
         reject(new Error(`Failed to open serial port: ${error.message}`))
       }
     })
+  }
+
+  handleData(data) {
+    this.buffer += data.toString()
+    
+    // Look for complete responses ending with '>'
+    if (this.buffer.includes('>')) {
+      const lines = this.buffer.split(/[\r\n]+/)
+      const responses = []
+      
+      for (let i = 0; i < lines.length; i++) {
+        let line = lines[i].trim()
+        if (line.length > 0 && line !== '>' && !line.startsWith('SEARCHING')) {
+          // Check if this is a byte count prefix (3 hex digits at start of multiline response)
+          if (/^[0-9A-Fa-f]{3}$/.test(line) && i < lines.length - 1) {
+            continue // Skip byte count lines
+          }
+          
+          // Check if line has a line number prefix (e.g., "0: 41 23 00")
+          const lineNumberMatch = line.match(/^(\d+):\s*(.+)$/)
+          if (lineNumberMatch) {
+            line = lineNumberMatch[2] // Extract the actual data part
+          }
+          
+          responses.push(line)
+        }
+      }
+      
+      // Process responses based on init stage
+      if (this.initStage === 'adapter_check') {
+        this.handleAdapterCheckResponse(responses)
+      } else if (this.initStage === 'engine_check') {
+        this.handleEngineCheckResponse(responses)
+      }
+      
+      // Clear buffer
+      this.buffer = ''
+    }
   }
 
   async sendCommand(command, timeout = 2000) {
@@ -75,44 +114,105 @@ class PidDiscovery {
 
   async checkAdapter() {
     this.log('\nChecking adapter connectivity...', colors.cyan)
+    this.initStage = 'adapter_check'
     
-    // Reset adapter
-    await this.sendCommand('ATZ', 3000)
+    // Send ATI command and wait for response
+    await new Promise((resolve, reject) => {
+      this.adapterCheckResolve = resolve
+      this.adapterCheckReject = reject
+      
+      this.port.write('ATI\r')
+      
+      // Set timeout for adapter check
+      setTimeout(() => {
+        if (this.initStage === 'adapter_check') {
+          reject(new Error('Adapter check timeout - no response to ATI command'))
+        }
+      }, 3000)
+    })
+  }
+
+  handleAdapterCheckResponse(responses) {
+    const response = responses.join(' ')
     
-    // Get adapter info
-    const response = await this.sendCommand('ATI')
-    
+    // Check if we got a valid adapter response
     if (response.includes('ELM327') || response.includes('STN') || response.includes('OBD')) {
-      this.adapterInfo = response.trim().replace(/[\r\n>]/g, ' ').trim()
+      this.adapterInfo = response
       this.log(`✓ Adapter detected: ${this.adapterInfo}`, colors.green)
+      this.initStage = null
       
-      // Configure adapter
-      await this.sendCommand('ATE0') // Echo off
-      await this.sendCommand('ATH0') // Headers off
-      await this.sendCommand('ATSP0') // Auto protocol
-      
-      return true
+      if (this.adapterCheckResolve) {
+        this.adapterCheckResolve()
+      }
     } else {
-      throw new Error('No valid OBD2 adapter response')
+      if (this.adapterCheckReject) {
+        this.adapterCheckReject(new Error(`Invalid adapter response: ${response}`))
+      }
     }
   }
 
   async checkEngine() {
     this.log('\nChecking engine status...', colors.cyan)
+    this.initStage = 'engine_check'
     
-    const response = await this.sendCommand('0100')
+    // Send 0100 command and wait for response
+    await new Promise((resolve, reject) => {
+      this.engineCheckResolve = resolve
+      this.engineCheckReject = reject
+      
+      this.port.write('0100\r')
+      
+      // Set timeout for engine check
+      setTimeout(() => {
+        if (this.initStage === 'engine_check') {
+          reject(new Error('Engine not responding - may be off'))
+        }
+      }, 3000)
+    })
+  }
+
+  handleEngineCheckResponse(responses) {
+    const response = responses.join(' ')
     
+    // Check if we got a valid response to 0100
     if (response.includes('41 00') || response.includes('4100')) {
       this.log('✓ Engine is running and responding', colors.green)
-      return true
+      this.initStage = null
+      
+      if (this.engineCheckResolve) {
+        this.engineCheckResolve()
+      }
     } else if (response.includes('NO DATA')) {
-      throw new Error('Engine is not running or not responding')
+      if (this.engineCheckReject) {
+        this.engineCheckReject(new Error('Engine not responding - may be off'))
+      }
     } else {
-      throw new Error(`Unexpected engine response: ${response}`)
+      if (this.engineCheckReject) {
+        this.engineCheckReject(new Error(`Unexpected engine response: ${response}`))
+      }
     }
   }
 
-  parseResponse(response, pid) {
+  async initializeAdapter() {
+    this.log('\nInitializing adapter...', colors.cyan)
+    
+    // Send initialization commands with proper timing
+    const initCommands = [
+      { cmd: 'ATZ', desc: 'Reset adapter', delay: 2000 },
+      { cmd: 'ATE0', desc: 'Echo off', delay: 1000 },
+      { cmd: 'ATH0', desc: 'Headers off', delay: 1000 },
+      { cmd: 'ATSP0', desc: 'Auto protocol', delay: 1000 }
+    ]
+    
+    for (const { cmd, desc, delay } of initCommands) {
+      this.log(`  ${cmd} (${desc})`)
+      await this.sendCommand(cmd, delay)
+    }
+    
+    this.log('✓ Adapter initialized', colors.green)
+  }
+
+  parseResponse(response, pid, mode = '01') {
     // Clean up response
     let cleaned = response.trim().replace(/[\r\n>]/g, ' ').trim()
     
@@ -122,7 +222,6 @@ class PidDiscovery {
     }
     
     // Handle vLinker FS format with byte count prefix and line numbers
-    // Example: "009\r\n0: 41 23 00 47 33 65\r\n1: 42 31 C4 AA AA AA AA"
     const lines = response.split(/[\r\n]+/)
     const processedLines = []
     
@@ -148,25 +247,39 @@ class PidDiscovery {
     // Rejoin cleaned lines
     cleaned = processedLines.join(' ')
     
-    // Look for Mode 01 response (41 XX ...)
-    const mode01Match = cleaned.match(/41\s*([0-9A-Fa-f]{2})\s*([0-9A-Fa-f\s]+)/)
-    if (mode01Match && mode01Match[1].toUpperCase() === pid) {
-      // Extract data bytes
-      const dataBytes = mode01Match[2].trim().split(/\s+/)
-      return {
-        pid: pid,
-        dataBytes: dataBytes.length
+    // Determine response mode based on request mode
+    let responseMode = ''
+    if (mode === '01') responseMode = '41'
+    else if (mode === '22') responseMode = '62'
+    
+    // Look for mode response with spaces
+    const modeMatch = cleaned.match(new RegExp(`${responseMode}\\s*([0-9A-Fa-f]+)\\s*([0-9A-Fa-f\\s]*)`))
+    if (modeMatch) {
+      const responsePid = mode === '22' ? modeMatch[1].substring(0, 4) : modeMatch[1].substring(0, 2)
+      if (responsePid.toUpperCase() === pid.toUpperCase()) {
+        // Extract data bytes
+        const dataStart = mode === '22' ? 4 : 2
+        const dataBytes = modeMatch[1].substring(dataStart) + (modeMatch[2] || '')
+        const byteCount = dataBytes.trim().split(/\s+/).filter(b => b.length > 0).length
+        return {
+          pid: pid,
+          dataBytes: byteCount || 1
+        }
       }
     }
     
-    // Also check without spaces (some adapters return 41XX...)
-    const compactMatch = cleaned.match(/41([0-9A-Fa-f]{2})([0-9A-Fa-f]+)/)
-    if (compactMatch && compactMatch[1].toUpperCase() === pid) {
-      // Count bytes (2 hex chars per byte)
-      const dataLength = compactMatch[2].length / 2
-      return {
-        pid: pid,
-        dataBytes: Math.floor(dataLength)
+    // Also check without spaces
+    const compactMatch = cleaned.match(new RegExp(`${responseMode}([0-9A-Fa-f]+)`))
+    if (compactMatch) {
+      const responsePid = mode === '22' ? compactMatch[1].substring(0, 4) : compactMatch[1].substring(0, 2)
+      if (responsePid.toUpperCase() === pid.toUpperCase()) {
+        // Count remaining bytes
+        const dataStart = mode === '22' ? 4 : 2
+        const dataLength = (compactMatch[1].length - dataStart) / 2
+        return {
+          pid: pid,
+          dataBytes: Math.floor(dataLength) || 1
+        }
       }
     }
     
@@ -185,24 +298,25 @@ class PidDiscovery {
     process.stdout.write('\r' + status)
   }
 
-  async testPid(pid) {
-    const command = '01' + pid
+  async testPid(pid, mode = '01') {
+    const command = mode + pid
     const response = await this.sendCommand(command, 500) // Shorter timeout for individual PIDs
     
-    const result = this.parseResponse(response, pid)
+    const result = this.parseResponse(response, pid, mode)
     if (result) {
-      const pidDef = PidDefinitions.getPidDefinition(pid)
-      const name = pidDef ? pidDef.name : 'Unknown'
+      const fullPid = mode === '22' ? '22:' + pid : pid
+      const pidDef = PidDefinitions.getPidDefinition(fullPid)
+      const name = pidDef ? pidDef.name : (mode === '22' ? 'Manufacturer Specific' : 'Unknown')
       
       this.discoveredPids.push({
-        pid: pid,
+        pid: fullPid,
         name: name,
         dataBytes: result.dataBytes
       })
       
       // Show discovered PID below progress bar
       process.stdout.write('\n')
-      this.log(`✓ ${pid} ${name}`, colors.green)
+      this.log(`✓ ${fullPid} ${name}`, colors.green)
       
       return true
     }
@@ -248,28 +362,73 @@ class PidDiscovery {
     
     process.stdout.write('\n\n')
     
-    // Also test some common Mode 22 PIDs if time permits
-    this.log('Testing common Mode 22 PIDs...', colors.cyan)
-    const commonMode22Pids = ['0545', '0045', '0405', '0445']
+    // Test Mode 22 PIDs (manufacturer specific)
+    this.log('Testing Mode 22 PIDs (manufacturer specific)...', colors.cyan)
+    this.log('This may take a few minutes...\n')
     
-    for (const pid of commonMode22Pids) {
-      const command = '22' + pid
-      const response = await this.sendCommand(command, 500)
+    // Common Mode 22 PID ranges for marine engines
+    const mode22Ranges = [
+      { start: 0x0000, end: 0x00FF, desc: 'Basic parameters' },
+      { start: 0x0400, end: 0x04FF, desc: 'Fuel/consumption' },
+      { start: 0x0500, end: 0x05FF, desc: 'Temperature/pressure' }
+    ]
+    
+    let mode22Tested = 0
+    let mode22Found = 0
+    
+    for (const range of mode22Ranges) {
+      this.log(`\nTesting ${range.desc} (${range.start.toString(16).padStart(4, '0').toUpperCase()}-${range.end.toString(16).padStart(4, '0').toUpperCase()})...`)
       
-      if (!response.includes('NO DATA') && !response.includes('?')) {
-        const fullPid = '22:' + pid
-        const pidDef = PidDefinitions.getPidDefinition(fullPid)
-        const name = pidDef ? pidDef.name : 'Mode 22 PID'
+      // Test every 16th PID in the range for efficiency
+      for (let i = range.start; i <= range.end; i += 16) {
+        const pid = i.toString(16).toUpperCase().padStart(4, '0')
+        mode22Tested++
         
-        this.discoveredPids.push({
-          pid: fullPid,
-          name: name,
-          dataBytes: 0 // Mode 22 byte count varies
-        })
+        // Update progress
+        const rangeProgress = Math.floor(((i - range.start) / (range.end - range.start)) * 100)
+        process.stdout.write(`\rTesting ${pid}... [${rangeProgress}%]`)
         
-        this.log(`✓ ${fullPid} ${name}`, colors.green)
+        const found = await this.testPid(pid, '22')
+        if (found) {
+          mode22Found++
+          
+          // If we found a PID, test nearby PIDs too
+          for (let j = 1; j <= 15; j++) {
+            if (i + j <= range.end) {
+              const nearbyPid = (i + j).toString(16).toUpperCase().padStart(4, '0')
+              mode22Tested++
+              await this.testPid(nearbyPid, '22')
+              await new Promise(resolve => setTimeout(resolve, 50))
+            }
+          }
+        }
+        
+        // Small delay to avoid overwhelming the adapter
+        await new Promise(resolve => setTimeout(resolve, 50))
       }
+      
+      process.stdout.write('\r' + ' '.repeat(50) + '\r') // Clear progress line
     }
+    
+    // Also test specific known PIDs
+    const knownMode22Pids = [
+      '0545', '0045', '0405', '0445', // Hyundai
+      '0100', '0101', '0102', '0103', // Common engine data
+      '0200', '0201', '0202', '0203', // Common fuel data
+      '0300', '0301', '0302', '0303', // Common temperature data
+    ]
+    
+    this.log('\nTesting known manufacturer PIDs...')
+    for (const pid of knownMode22Pids) {
+      mode22Tested++
+      await this.testPid(pid, '22')
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+    
+    this.log(`\nMode 22 discovery complete: ${mode22Found} PIDs found (tested ${mode22Tested})`, colors.green)
+    
+    // Update total tested count
+    this.testedPids += mode22Tested
   }
 
   generateProfile() {
@@ -342,8 +501,7 @@ module.exports = ${JSON.stringify(profile, null, 2)}
     
     this.log('\nTo use this profile:', colors.yellow)
     this.log('1. The profile has been saved to src/engine-profiles/discovered.js')
-    this.log('2. Update src/engine-profiles/index.js to include the discovered profile')
-    this.log('3. Restart SignalK and select "Unknown > Discovered Profile" in plugin settings')
+    this.log('2. Restart SignalK and select "Unknown > Discovered Profile" in plugin settings')
   }
 
   async run() {
@@ -354,6 +512,7 @@ module.exports = ${JSON.stringify(profile, null, 2)}
       await this.connect()
       await this.checkAdapter()
       await this.checkEngine()
+      await this.initializeAdapter()
       await this.discoverPids()
       
       this.generateProfile()
