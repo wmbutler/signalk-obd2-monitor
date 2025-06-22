@@ -2,18 +2,15 @@ const { SerialPort } = require('serialport')
 const EngineProfiles = require('../src/engine-profiles/index')
 const OBD2Connection = require('../src/obd2-connection')
 const SignalKMapper = require('../src/signalk-mapper')
-const AlarmManager = require('../src/alarm-manager')
-
 module.exports = function (app) {
   const plugin = {}
   let obd2Connection = null
   let updateInterval = null
-  let alarmManager = null
   let fuelConsumptionTracker = null
 
   plugin.id = 'signalk-obd2-monitor'
   plugin.name = 'OBD2 Engine Monitor'
-  plugin.description = 'Monitor marine engines via OBD2 interface with fuel flow, pressure monitoring, and alarms'
+  plugin.description = 'Monitor marine engines via OBD2 interface with fuel flow and pressure monitoring'
 
   plugin.schema = require('./schema.json')
   plugin.uiSchema = require('./uiSchema.json')
@@ -27,9 +24,6 @@ module.exports = function (app) {
       app.error('Invalid plugin configuration:', validationResult.errors)
       return
     }
-    
-    // Initialize alarm manager
-    alarmManager = new AlarmManager(app, options.alarms)
     
     // Get engine profile
     const engineProfile = EngineProfiles.getProfile(
@@ -153,10 +147,6 @@ module.exports = function (app) {
       obd2Connection = null
     }
 
-    if (alarmManager) {
-      alarmManager.stop()
-      alarmManager = null
-    }
   }
 
   function getEnabledPids(options, engineProfile) {
@@ -203,11 +193,6 @@ module.exports = function (app) {
         }]
       }]
     })
-
-    // Check alarms - DISABLED
-    // if (alarmManager) {
-    //   alarmManager.checkValue(signalkData.path, signalkData.value, pid)
-    // }
 
     // Track fuel consumption automatically if it's a fuel flow PID
     if (fuelConsumptionTracker && (pid === '5E' || pid === '9E' || pid === 'A2' || pid === '22:0545' || pid === '22:0045')) {

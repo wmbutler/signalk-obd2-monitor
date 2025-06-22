@@ -1,6 +1,6 @@
 # SignalK OBD2 Engine Monitor
 
-A comprehensive SignalK plugin for monitoring marine engines via OBD2 interface with support for fuel flow monitoring, rail pressure tracking, and configurable alarms.
+A comprehensive SignalK plugin for monitoring marine engines via OBD2 interface with support for fuel flow monitoring and rail pressure tracking.
 
 ## Features
 
@@ -8,7 +8,6 @@ A comprehensive SignalK plugin for monitoring marine engines via OBD2 interface 
 - **Profile-Based Monitoring**: Each engine profile defines exactly which parameters to monitor
 - **Real-time Monitoring**: Track critical engine parameters via OBD2
 - **Automatic Fuel Tracking**: Fuel consumption calculated when engine supports fuel flow
-- **Smart Alarms**: Configurable multi-level alarms for temperature and pressure
 - **SignalK Integration**: Full integration with SignalK paths and notifications
 - **Batch Querying**: Request multiple PIDs in a single query for faster updates
 - **Continuous Mode**: Automatic continuous querying without delays between values
@@ -82,23 +81,6 @@ A comprehensive SignalK plugin for monitoring marine engines via OBD2 interface 
 3. Choose engine instance (port, starboard, main, auxiliary)
 
 The plugin will automatically query all PIDs supported by your selected engine profile. Each engine profile defines which parameters are available for that specific engine model. Fuel consumption tracking is automatically enabled if the engine supports fuel flow rate (PID 5E).
-
-### Alarm Configuration
-
-#### Coolant Temperature
-- **Warning**: 85°C (default)
-- **Alarm**: 95°C (default)
-- **Emergency**: 105°C (default)
-
-#### Fuel Pressure
-- **Low Warning**: 300 kPa
-- **Low Alarm**: 250 kPa
-- **High Warning**: 600 kPa
-- **High Alarm**: 700 kPa
-
-#### Oil Temperature
-- **Warning**: 110°C
-- **Alarm**: 120°C
 
 ### Debug Logging
 
@@ -285,5 +267,4 @@ MIT License - see LICENSE file for details
 - Initial release
 - Support for 10 major engine manufacturers
 - Fuel flow and pressure monitoring
-- Configurable alarms for temperature and pressure
 - Full SignalK integration
