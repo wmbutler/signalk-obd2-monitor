@@ -18,8 +18,7 @@ module.exports = {
         '42', // Control module voltage
         '46', // Ambient air temperature
         '5C', // Engine oil temperature
-        '22:0545', // Fuel consumption (Hyundai Mode 22)
-        '22:0045'  // Fuel consumption (Hyundai Mode 22 alt)
+        '5E', // Engine fuel rate
       ],
       customMappings: {
         // Custom conversion for this specific engine if needed
