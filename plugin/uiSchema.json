@@ -6,10 +6,6 @@
     "baudRate": {
       "ui:help": "Most OBD2 adapters use 9600 baud"
     },
-    "updateInterval": {
-      "ui:widget": "range",
-      "ui:help": "This setting is deprecated - the plugin now uses continuous querying for faster updates"
-    },
     "batchMode": {
       "ui:help": "Enable batch mode to request multiple PIDs in a single query. This significantly reduces delays between value updates."
     },

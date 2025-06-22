@@ -1,6 +1,7 @@
 const { SerialPort } = require('serialport')
 const EventEmitter = require('events')
 const PidDefinitions = require('./pid-definitions')
+const ConnectionStateManager = require('./connection-state-manager')
 
 class OBD2Connection extends EventEmitter {
   constructor(options) {
@@ -20,6 +21,43 @@ class OBD2Connection extends EventEmitter {
     this.awaitingResponse = false
     this.responseTimeout = null
     this.continuousMode = options.continuousMode !== false // Default to true
+    
+    // Connection state management
+    this.stateManager = new ConnectionStateManager(this.app)
+    this.reconnectTimeout = null
+    this.reconnectDelay = 5000 // 5 seconds between reconnect attempts
+    
+    // Setup state manager event handlers
+    this.setupStateManagerHandlers()
+  }
+
+  setupStateManagerHandlers() {
+    // Handle state changes
+    this.stateManager.on('stateChange', (change) => {
+      this.emit('stateChange', change)
+    })
+    
+    // Handle probing
+    this.stateManager.on('startProbing', () => {
+      this.app.debug('Starting probe mode - checking adapter connectivity')
+      this.startProbing()
+    })
+    
+    this.stateManager.on('probe', () => {
+      this.sendProbeCommand()
+    })
+    
+    this.stateManager.on('resumeNormalPolling', () => {
+      this.app.debug('Resuming normal PID polling')
+      if (this.initialized && this.continuousMode) {
+        this.requestNextPid()
+      }
+    })
+    
+    this.stateManager.on('connectionLost', () => {
+      this.app.debug('Connection lost - attempting reconnection')
+      this.scheduleReconnect()
+    })
   }
 
   connect() {
@@ -33,6 +71,7 @@ class OBD2Connection extends EventEmitter {
 
       this.port.on('open', () => {
         this.app.debug('Serial port opened successfully')
+        this.stateManager.onConnected()
         this.emit('connected')
         this.initializeOBD()
       })
@@ -49,6 +88,7 @@ class OBD2Connection extends EventEmitter {
 
       this.port.on('close', () => {
         this.app.debug('Serial port closed')
+        this.stateManager.onDisconnected()
         this.emit('disconnected')
         this.initialized = false
       })
@@ -67,6 +107,7 @@ class OBD2Connection extends EventEmitter {
 
   initializeOBD() {
     this.app.debug('Starting OBD2 initialization sequence')
+    this.stateManager.onInitializing()
     
     // Send initialization commands
     setTimeout(() => {
@@ -107,6 +148,7 @@ class OBD2Connection extends EventEmitter {
     setTimeout(() => {
       this.initialized = true
       this.app.debug(`OBD2 initialization complete - PIDs: ${this.enabledPids.join(',')}, Batch: ${this.batchMode}, MaxBatch: ${this.maxBatchSize}`)
+      this.stateManager.onInitialized()
       this.emit('initialized')
     }, 8000)
   }
@@ -281,7 +323,12 @@ class OBD2Connection extends EventEmitter {
       
       // Process all responses
       if (responses.length > 0) {
-        this.processBatchResponse(responses)
+        // Check if this is a probe response
+        if (this.isProbing && this.lastCommand === '0100') {
+          this.handleProbeResponse(responses.join(' '))
+        } else {
+          this.processBatchResponse(responses)
+        }
       } else {
         this.app.debug('No valid responses found in buffer')
       }
@@ -307,6 +354,7 @@ class OBD2Connection extends EventEmitter {
       // Handle error responses
       if (responses.some(r => r.includes('NO DATA'))) {
         this.app.debug(`No data received: ${responses.join(', ')}`)
+        this.stateManager.onNoData()
       } else if (responses.some(r => r.includes('UNABLE TO CONNECT'))) {
         this.app.error(`Unable to connect to ECU: ${responses.join(', ')}`)
       } else if (responses.some(r => r.includes('CAN ERROR'))) {
@@ -491,6 +539,12 @@ class OBD2Connection extends EventEmitter {
       // Log successful data processing at debug level
       this.app.debug(`PID ${pid} (${pidDef.name}): ${finalValue} ${pidDef.unit}`)
 
+      // Notify state manager of successful data
+      this.stateManager.onDataReceived({
+        pid: pid,
+        value: finalValue
+      })
+      
       this.emit('data', {
         pid: pid,
         name: pidDef.name,
@@ -508,6 +562,72 @@ class OBD2Connection extends EventEmitter {
       
       this.emit('error', error)
     }
+  }
+
+  // Probe mode methods
+  startProbing() {
+    this.app.debug('Entering probe mode - will check adapter connectivity every 2 seconds')
+    this.continuousMode = false // Stop normal polling
+    this.sendProbeCommand()
+  }
+  
+  sendProbeCommand() {
+    if (!this.port || !this.port.isOpen) {
+      this.app.debug('Cannot send probe - port not open')
+      return
+    }
+    
+    this.app.debug('Sending probe command 0100 (supported PIDs)')
+    this.lastCommand = '0100'
+    this.isProbing = true
+    this.sendCommand('0100')
+    
+    // Set timeout for probe response
+    this.probeTimeout = setTimeout(() => {
+      this.app.debug('Probe timeout - no response')
+      this.stateManager.onProbeResponse(false, 'TIMEOUT')
+      this.stateManager.scheduleNextProbe()
+    }, 2000)
+  }
+  
+  handleProbeResponse(response) {
+    if (this.probeTimeout) {
+      clearTimeout(this.probeTimeout)
+      this.probeTimeout = null
+    }
+    
+    // Check if we got a valid response to 0100
+    if (response.includes('4100') || response.includes('41 00')) {
+      this.app.debug('Probe successful - adapter is responding')
+      this.stateManager.onProbeResponse(true, response)
+      this.continuousMode = true // Re-enable continuous mode
+      this.isProbing = false
+    } else if (response.includes('NO DATA')) {
+      this.app.debug('Probe returned NO DATA - engine may be off but adapter is connected')
+      this.stateManager.onProbeResponse(true, 'NO DATA')
+      this.stateManager.scheduleNextProbe()
+    } else {
+      this.app.debug(`Unexpected probe response: ${response}`)
+      this.stateManager.onProbeResponse(false, response)
+      this.stateManager.scheduleNextProbe()
+    }
+  }
+  
+  scheduleReconnect() {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout)
+    }
+    
+    this.app.debug(`Scheduling reconnection attempt in ${this.reconnectDelay}ms`)
+    
+    this.reconnectTimeout = setTimeout(() => {
+      this.app.debug('Attempting to reconnect...')
+      this.connect()
+    }, this.reconnectDelay)
+  }
+  
+  getConnectionStatus() {
+    return this.stateManager.getStatus()
   }
 }
 

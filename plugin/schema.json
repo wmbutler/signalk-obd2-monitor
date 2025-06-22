@@ -20,14 +20,6 @@
           "enum": [9600, 38400, 115200],
           "default": 9600
         },
-        "updateInterval": {
-          "type": "number",
-          "title": "Update Interval (seconds)",
-          "description": "How often to poll for new data (deprecated - continuous mode is now used)",
-          "default": 1,
-          "minimum": 0.5,
-          "maximum": 10
-        },
         "batchMode": {
           "type": "boolean",
           "title": "Batch Mode",

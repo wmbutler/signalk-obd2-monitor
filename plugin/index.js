@@ -21,6 +21,13 @@ module.exports = function (app) {
   plugin.start = function (options) {
     app.debug('Starting OBD2 Engine Monitor plugin with options:', options)
     
+    // Validate configuration
+    const validationResult = validateConfiguration(options)
+    if (!validationResult.valid) {
+      app.error('Invalid plugin configuration:', validationResult.errors)
+      return
+    }
+    
     // Initialize alarm manager
     alarmManager = new AlarmManager(app, options.alarms)
     
@@ -89,6 +96,11 @@ module.exports = function (app) {
       
       obd2Connection.on('disconnected', () => {
         app.debug('OBD2 adapter disconnected')
+      })
+      
+      obd2Connection.on('stateChange', (change) => {
+        app.debug('Connection state changed', change)
+        reportConnectionStatus(change.newState)
       })
 
       obd2Connection.connect()
@@ -176,6 +188,126 @@ module.exports = function (app) {
 
     // Calculate fuel efficiency automatically if we have the needed data
     calculateFuelEfficiency(pid, signalkData)
+  }
+  
+  function validateConfiguration(options) {
+    const errors = []
+    
+    // Check for required fields
+    if (!options.connection) {
+      errors.push('Missing required field: connection')
+    } else {
+      if (!options.connection.serialPort) {
+        errors.push('Missing required field: connection.serialPort')
+      }
+      
+      // Check for deprecated fields
+      if (options.connection.updateInterval !== undefined) {
+        app.debug('Ignoring deprecated updateInterval setting - plugin now uses continuous mode')
+      }
+    }
+    
+    if (!options.engineManufacturer) {
+      errors.push('Missing required field: engineManufacturer')
+    }
+    
+    if (!options.engineModel) {
+      errors.push('Missing required field: engineModel')
+    }
+    
+    // Validate engine profile exists
+    if (options.engineManufacturer && options.engineModel) {
+      const profile = EngineProfiles.getProfile(options.engineManufacturer, options.engineModel)
+      if (!profile) {
+        errors.push(`Invalid engine profile: ${options.engineManufacturer} - ${options.engineModel}`)
+      }
+    }
+    
+    // Check for unknown fields in connection
+    if (options.connection) {
+      const validConnectionFields = ['serialPort', 'baudRate', 'batchMode', 'maxBatchSize']
+      Object.keys(options.connection).forEach(field => {
+        if (!validConnectionFields.includes(field) && field !== 'updateInterval') {
+          app.debug(`Unknown connection field ignored: ${field}`)
+        }
+      })
+    }
+    
+    // Validate batch size if specified
+    if (options.connection && options.connection.maxBatchSize) {
+      if (options.connection.maxBatchSize < 1 || options.connection.maxBatchSize > 6) {
+        errors.push('maxBatchSize must be between 1 and 6')
+      }
+    }
+    
+    return {
+      valid: errors.length === 0,
+      errors
+    }
+  }
+  
+  function reportConnectionStatus(state) {
+    // Report connection status to SignalK
+    const statusPath = 'obd2.connection.state'
+    const status = obd2Connection.getConnectionStatus()
+    
+    app.handleMessage(plugin.id, {
+      updates: [{
+        values: [
+          {
+            path: statusPath,
+            value: state
+          },
+          {
+            path: 'obd2.connection.lastDataTime',
+            value: status.lastSuccessfulData ? status.lastSuccessfulData.toISOString() : null
+          },
+          {
+            path: 'obd2.connection.consecutiveFailures',
+            value: status.consecutiveFailures
+          }
+        ]
+      }]
+    })
+    
+    // Send notification if in probe mode
+    if (state === 'probing') {
+      app.handleMessage(plugin.id, {
+        updates: [{
+          values: [{
+            path: 'notifications.obd2.engineOff',
+            value: {
+              state: 'normal',
+              method: ['visual'],
+              message: 'Engine appears to be off - OBD2 adapter is connected but not receiving engine data'
+            }
+          }]
+        }]
+      })
+    } else if (state === 'active') {
+      // Clear the notification when back to active
+      app.handleMessage(plugin.id, {
+        updates: [{
+          values: [{
+            path: 'notifications.obd2.engineOff',
+            value: null
+          }]
+        }]
+      })
+    } else if (state === 'disconnected') {
+      app.handleMessage(plugin.id, {
+        updates: [{
+          values: [{
+            path: 'notifications.obd2.disconnected',
+            value: {
+              state: 'alert',
+              method: ['visual', 'sound'],
+              message: 'OBD2 adapter disconnected - check connection'
+            }
+          }]
+        }]
+      })
+    }
   }
 
   function updateFuelConsumption(fuelRate, pid) {

@@ -12,6 +12,8 @@ A comprehensive SignalK plugin for monitoring marine engines via OBD2 interface 
 - **SignalK Integration**: Full integration with SignalK paths and notifications
 - **Batch Querying**: Request multiple PIDs in a single query for faster updates
 - **Continuous Mode**: Automatic continuous querying without delays between values
+- **Fault Tolerant**: Continues monitoring even when engine is off, automatically resumes when engine starts
+- **Connection State Management**: Distinguishes between engine off and adapter disconnected states
 
 ## Supported Engine Manufacturers
 
@@ -131,6 +133,39 @@ Debug logs can be viewed in:
 - OBDLink MX+ (recommended for reliability)
 - Veepeak OBDCheck BLE+
 
+## Connection States
+
+The plugin monitors and reports the connection state through SignalK paths:
+
+### Connection States
+- **`disconnected`** - No communication with OBD2 adapter
+  - Serial port closed or errored
+  - Adapter unplugged or powered off
+  - Wrong serial port selected
+  
+- **`connecting`** - Serial port opened, initializing connection
+  
+- **`initializing`** - Sending OBD2 initialization commands
+  
+- **`active`** - Normal operation, receiving engine data
+  - Engine is running
+  - All PIDs responding normally
+  
+- **`probing`** - Engine appears to be off
+  - Adapter is connected and responding
+  - Engine PIDs return "NO DATA"
+  - Polls every 2 seconds for quick recovery
+  - Automatically resumes when engine starts
+
+### SignalK Paths
+- `obd2.connection.state` - Current connection state
+- `obd2.connection.lastDataTime` - Timestamp of last successful data
+- `obd2.connection.consecutiveFailures` - Number of failed requests
+
+### Notifications
+- `notifications.obd2.engineOff` - Engine appears to be off (normal state)
+- `notifications.obd2.disconnected` - Adapter disconnected (alert state)
+
 ## Troubleshooting
 
 ### Connection Issues
@@ -142,7 +177,10 @@ Debug logs can be viewed in:
 1. Check if engine supports standard OBD2 PIDs
 2. Try the Generic OBD2 profile first
 3. Enable debug mode in SignalK to see raw OBD2 responses
-4. Check the SignalK Data Browser for error messages and connection status
+4. Check the SignalK Data Browser for:
+   - Connection state at `obd2.connection.state`
+   - Error messages in notifications
+   - Last successful data timestamp
 
 ### Bluetooth Connection (Linux)
 ```bash
@@ -205,6 +243,19 @@ MIT License - see LICENSE file for details
 - SignalK Slack channel: #obd2-monitor
 
 ## Changelog
+
+### v1.4.0
+- Added fault-tolerant connection management
+- Implemented connection state tracking (disconnected, connecting, initializing, active, probing)
+- Added automatic recovery when engine starts after being off
+- Distinguished between "engine off" and "adapter disconnected" states
+- Added probe mode that checks adapter connectivity every 2 seconds
+- Added connection status reporting via SignalK paths
+- Added notifications for engine off and adapter disconnected states
+- Improved error handling and automatic reconnection
+- Removed deprecated `updateInterval` configuration option
+- Added configuration validation with debug messages for invalid schemas
+- Backward compatible with existing configurations containing deprecated fields
 
 ### v1.3.0
 - Removed monitoring options - now uses only PIDs defined in engine profiles
