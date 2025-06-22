@@ -17,6 +17,9 @@ module.exports = function (app) {
       disconnected: null
     }
   }
+  
+  // Track if we're in a reconnection attempt to suppress intermediate status updates
+  let isReconnecting = false
 
   plugin.id = 'signalk-obd2-monitor'
   plugin.name = 'OBD2 Engine Monitor'
@@ -96,12 +99,16 @@ module.exports = function (app) {
       
       obd2Connection.on('connected', () => {
         app.debug('OBD2 adapter connected')
-        updatePluginStatus('Connecting to adapter...')
+        // Don't update status during reconnection attempts
+        if (!isReconnecting) {
+          updatePluginStatus('Connecting to adapter...')
+        }
       })
       
       obd2Connection.on('disconnected', () => {
         app.debug('OBD2 adapter disconnected')
         updatePluginError('Adapter disconnected')
+        isReconnecting = true // Mark that we're now in reconnection mode
         // Don't send any updates when disconnected - SignalK will retain last values
       })
       
@@ -112,6 +119,8 @@ module.exports = function (app) {
       
       obd2Connection.on('adapterVerified', (info) => {
         app.debug('Adapter verified:', info)
+        // Always update status when adapter is verified - this is a meaningful milestone
+        isReconnecting = false // Clear reconnecting flag
         updatePluginStatus('Adapter connected - Checking engine...')
       })
       
@@ -122,11 +131,13 @@ module.exports = function (app) {
       
       obd2Connection.on('engineVerified', () => {
         app.debug('Engine communication verified')
+        isReconnecting = false // Clear reconnecting flag
         updatePluginStatus('Engine online - Initializing...')
       })
       
       obd2Connection.on('engineOff', (message) => {
         app.debug('Engine off:', message)
+        isReconnecting = false // Clear reconnecting flag
         updatePluginStatus('Adapter connected - Engine off')
       })
       
@@ -305,22 +316,35 @@ module.exports = function (app) {
         break
         
       case 'connecting':
-        updatePluginStatus('Connecting to adapter...')
+        // Only show connecting status if not reconnecting
+        if (!isReconnecting) {
+          updatePluginStatus('Connecting to adapter...')
+        }
         break
         
       case 'adapter_check':
-        updatePluginStatus('Verifying adapter...')
+        // Don't show intermediate states during reconnection
+        if (!isReconnecting) {
+          updatePluginStatus('Verifying adapter...')
+        }
         break
         
       case 'engine_check':
-        updatePluginStatus('Checking engine communication...')
+        // Don't show intermediate states during reconnection
+        if (!isReconnecting) {
+          updatePluginStatus('Checking engine communication...')
+        }
         break
         
       case 'initializing':
-        updatePluginStatus('Initializing OBD2 connection...')
+        // Only show if not reconnecting
+        if (!isReconnecting) {
+          updatePluginStatus('Initializing OBD2 connection...')
+        }
         break
         
       case 'active':
+        isReconnecting = false // Clear reconnecting flag on successful connection
         updatePluginStatus('Engine online - Monitoring active')
         // Clear notifications
         updateNotification('notifications.obd2.engineOff', null)
