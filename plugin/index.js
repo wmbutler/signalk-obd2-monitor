@@ -220,7 +220,7 @@ module.exports = function (app) {
   }
   
   function clearAllPidData(options) {
-    // Send null values for all monitored PIDs when connection is lost
+    // Send 0 values for all monitored PIDs when connection is lost
     const engineProfile = EngineProfiles.getProfile(
       options.engineManufacturer,
       options.engineModel
@@ -228,17 +228,17 @@ module.exports = function (app) {
     
     if (!engineProfile) return
     
-    app.debug('Clearing all PID data - sending null values')
+    app.debug('Clearing all PID data - sending 0 values')
     
     // Get all PIDs from the engine profile
     const allPids = engineProfile.supportedPids
     
-    // Send null for each PID's SignalK path
+    // Send 0 for each PID's SignalK path
     allPids.forEach(pid => {
       // Get the SignalK mapping for this PID
       const signalkData = SignalKMapper.mapToSignalK(
         pid, 
-        null, // Send null value
+        0, // Send 0 value
         options.engineInstance || 'port'
       )
       
@@ -247,7 +247,7 @@ module.exports = function (app) {
           updates: [{
             values: [{
               path: signalkData.path,
-              value: null // Explicitly set to null
+              value: 0 // Set to 0 instead of null
             }]
           }]
         })
@@ -261,11 +261,11 @@ module.exports = function (app) {
           values: [
             {
               path: `propulsion.${options.engineInstance || 'port'}.fuel.averageRate`,
-              value: null
+              value: 0
             },
             {
               path: `propulsion.${options.engineInstance || 'port'}.fuel.totalConsumption`,
-              value: null
+              value: 0
             }
           ]
         }]
