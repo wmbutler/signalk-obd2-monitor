@@ -360,8 +360,21 @@ class OBD2Connection extends EventEmitter {
       const responses = []
       
       for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim()
+        let line = lines[i].trim()
         if (line.length > 0 && line !== '>' && !line.startsWith('SEARCHING')) {
+          // Check if this is a byte count prefix (3 hex digits at start of multiline response)
+          if (/^[0-9A-Fa-f]{3}$/.test(line) && i < lines.length - 1) {
+            this.app.debug(`Detected byte count prefix: ${line}`)
+            continue // Skip byte count lines
+          }
+          
+          // Check if line has a line number prefix (e.g., "0: 41 23 00")
+          const lineNumberMatch = line.match(/^(\d+):\s*(.+)$/)
+          if (lineNumberMatch) {
+            line = lineNumberMatch[2] // Extract the actual data part
+            this.app.debug(`Stripped line number prefix, cleaned line: ${line}`)
+          }
+          
           responses.push(line)
         }
       }
@@ -400,7 +413,17 @@ class OBD2Connection extends EventEmitter {
     this.app.debug(`Processing batch response with ${responses.length} lines`)
     
     // Check if this is a multi-line response (batch mode)
-    const dataResponses = responses.filter(r => r.startsWith('41') || r.startsWith('62'))
+    const dataResponses = responses.filter(r => {
+      // Check if line starts with mode indicator
+      if (r.startsWith('41') || r.startsWith('62')) {
+        return true
+      }
+      // Also check if it contains mode indicator after potential formatting
+      if (r.includes('41 ') || r.includes('62 ')) {
+        return true
+      }
+      return false
+    })
     
     if (dataResponses.length === 0) {
       // Handle error responses
