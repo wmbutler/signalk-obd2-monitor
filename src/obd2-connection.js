@@ -27,6 +27,11 @@ class OBD2Connection extends EventEmitter {
     this.reconnectTimeout = null
     this.reconnectDelay = 5000 // 5 seconds between reconnect attempts
     
+    // PID response tracking
+    this.pidResponseTracking = {}
+    this.trackingStartTime = null
+    this.completedCycles = 0
+    
     // Setup state manager event handlers
     this.setupStateManagerHandlers()
   }
@@ -136,9 +141,30 @@ class OBD2Connection extends EventEmitter {
   initializeOBD() {
     this.app.debug('Starting OBD2 initialization sequence')
     
+    // Initialize PID tracking
+    this.initializePidTracking()
+    
     // Stage 1: Check adapter connectivity
     this.stateManager.onAdapterCheck()
     this.checkAdapterConnectivity()
+  }
+  
+  initializePidTracking() {
+    this.trackingStartTime = Date.now()
+    this.completedCycles = 0
+    
+    // Initialize tracking for all enabled PIDs
+    this.enabledPids.forEach(pid => {
+      this.pidResponseTracking[pid] = {
+        attempts: 0,
+        successes: 0,
+        failures: 0,
+        lastResponse: null,
+        lastError: null
+      }
+    })
+    
+    this.app.debug(`Initialized PID response tracking for ${this.enabledPids.length} PIDs`)
   }
   
   checkAdapterConnectivity() {
@@ -225,6 +251,11 @@ class OBD2Connection extends EventEmitter {
   requestSinglePid() {
     const pid = this.enabledPids[this.currentPidIndex]
     
+    // Track attempt
+    if (this.pidResponseTracking[pid]) {
+      this.pidResponseTracking[pid].attempts++
+    }
+    
     // Check if this is a Mode 22 PID (starts with 22:)
     let command
     if (pid.startsWith('22:')) {
@@ -235,6 +266,9 @@ class OBD2Connection extends EventEmitter {
       // Standard Mode 01
       command = '01' + pid
     }
+    
+    // Store current PID for response tracking
+    this.currentRequestedPid = pid
     
     // Log RPM query specifically
     if (pid === '0C') {
@@ -247,6 +281,15 @@ class OBD2Connection extends EventEmitter {
     
     // Move to next PID for next request
     this.currentPidIndex = (this.currentPidIndex + 1) % this.enabledPids.length
+    
+    // Check if we completed a full cycle
+    if (this.currentPidIndex === 0) {
+      this.completedCycles++
+      if (this.completedCycles === 1) {
+        // Generate summary after first complete cycle
+        this.generatePidResponseSummary()
+      }
+    }
   }
 
   requestPidBatch() {
@@ -290,6 +333,11 @@ class OBD2Connection extends EventEmitter {
       const pid = this.enabledPids[pidIndex]
       command += pid
       pidsInBatch.push(pid)
+      
+      // Track attempt
+      if (this.pidResponseTracking[pid]) {
+        this.pidResponseTracking[pid].attempts++
+      }
     }
     
     this.app.debug(`Requesting PID batch: ${pidsInBatch.join(',')} - Command: ${command}`)
@@ -311,6 +359,15 @@ class OBD2Connection extends EventEmitter {
     
     // Move index forward by batch size
     this.currentPidIndex = (this.currentPidIndex + batchSize) % this.enabledPids.length
+    
+    // Check if we completed a full cycle
+    if (this.currentPidIndex === 0) {
+      this.completedCycles++
+      if (this.completedCycles === 1) {
+        // Generate summary after first complete cycle
+        this.generatePidResponseSummary()
+      }
+    }
   }
 
   setResponseTimeout() {
@@ -430,6 +487,20 @@ class OBD2Connection extends EventEmitter {
       if (responses.some(r => r.includes('NO DATA'))) {
         this.app.debug(`No data received: ${responses.join(', ')}`)
         this.stateManager.onNoData()
+        
+        // Track NO DATA response
+        if (this.currentRequestedPid && this.pidResponseTracking[this.currentRequestedPid]) {
+          this.pidResponseTracking[this.currentRequestedPid].failures++
+          this.pidResponseTracking[this.currentRequestedPid].lastError = 'NO DATA'
+        } else if (this.currentBatch) {
+          // Track for all PIDs in failed batch
+          this.currentBatch.pids.forEach(pid => {
+            if (this.pidResponseTracking[pid]) {
+              this.pidResponseTracking[pid].failures++
+              this.pidResponseTracking[pid].lastError = 'NO DATA'
+            }
+          })
+        }
       } else if (responses.some(r => r.includes('UNABLE TO CONNECT'))) {
         this.app.error(`Unable to connect to ECU: ${responses.join(', ')}`)
       } else if (responses.some(r => r.includes('CAN ERROR'))) {
@@ -614,6 +685,16 @@ class OBD2Connection extends EventEmitter {
       // Log successful data processing at debug level
       this.app.debug(`PID ${pid} (${pidDef.name}): ${finalValue} ${pidDef.unit}`)
 
+      // Track successful response
+      if (this.pidResponseTracking[pid]) {
+        this.pidResponseTracking[pid].successes++
+        this.pidResponseTracking[pid].lastResponse = {
+          value: finalValue,
+          unit: pidDef.unit,
+          timestamp: new Date().toISOString()
+        }
+      }
+      
       // Notify state manager of successful data
       this.stateManager.onDataReceived({
         pid: pid,
@@ -773,6 +854,121 @@ class OBD2Connection extends EventEmitter {
       this.app.error(`Unexpected engine check response: ${response}`)
       this.emit('engineError', `Unexpected response: ${response}`)
     }
+  }
+  
+  generatePidResponseSummary() {
+    const elapsedTime = Date.now() - this.trackingStartTime
+    const elapsedMinutes = Math.floor(elapsedTime / 60000)
+    const elapsedSeconds = Math.floor((elapsedTime % 60000) / 1000)
+    
+    this.app.debug('='.repeat(50))
+    this.app.debug('=== OBD2 PID Response Summary ===')
+    this.app.debug(`Engine Profile: ${this.engineProfile.manufacturer} ${this.engineProfile.model}`)
+    this.app.debug(`Total PIDs configured: ${this.enabledPids.length}`)
+    this.app.debug(`Time elapsed: ${elapsedMinutes}m ${elapsedSeconds}s`)
+    this.app.debug(`Completed cycles: ${this.completedCycles}`)
+    this.app.debug('')
+    
+    // Separate PIDs into responding and non-responding
+    const respondingPids = []
+    const nonRespondingPids = []
+    const intermittentPids = []
+    
+    this.enabledPids.forEach(pid => {
+      const tracking = this.pidResponseTracking[pid]
+      if (!tracking || tracking.attempts === 0) return
+      
+      const successRate = (tracking.successes / tracking.attempts) * 100
+      const pidDef = PidDefinitions.getPidDefinition(pid)
+      const pidName = pidDef ? pidDef.name : 'Unknown'
+      
+      const pidInfo = {
+        pid,
+        name: pidName,
+        successRate: successRate.toFixed(1),
+        attempts: tracking.attempts,
+        successes: tracking.successes,
+        failures: tracking.failures,
+        lastError: tracking.lastError,
+        lastValue: tracking.lastResponse
+      }
+      
+      if (successRate === 100) {
+        respondingPids.push(pidInfo)
+      } else if (successRate === 0) {
+        nonRespondingPids.push(pidInfo)
+      } else {
+        intermittentPids.push(pidInfo)
+      }
+    })
+    
+    // Log responding PIDs
+    if (respondingPids.length > 0) {
+      this.app.debug(`Responding PIDs (${respondingPids.length}):`)
+      respondingPids.forEach(info => {
+        const lastValue = info.lastValue ? `${info.lastValue.value} ${info.lastValue.unit}` : 'N/A'
+        this.app.debug(`✓ ${info.pid} (${info.name}): ${info.successRate}% success rate - Last: ${lastValue}`)
+      })
+      this.app.debug('')
+    }
+    
+    // Log intermittent PIDs
+    if (intermittentPids.length > 0) {
+      this.app.debug(`Intermittent PIDs (${intermittentPids.length}):`)
+      intermittentPids.forEach(info => {
+        const lastValue = info.lastValue ? `${info.lastValue.value} ${info.lastValue.unit}` : 'N/A'
+        this.app.debug(`⚠ ${info.pid} (${info.name}): ${info.successRate}% success rate (${info.successes}/${info.attempts}) - Last: ${lastValue}`)
+      })
+      this.app.debug('')
+    }
+    
+    // Log non-responding PIDs
+    if (nonRespondingPids.length > 0) {
+      this.app.debug(`Non-responding PIDs (${nonRespondingPids.length}):`)
+      nonRespondingPids.forEach(info => {
+        const errorMsg = info.lastError || 'Unknown error'
+        this.app.debug(`✗ ${info.pid} (${info.name}): 0% success rate (${errorMsg})`)
+      })
+      this.app.debug('')
+    }
+    
+    // Provide recommendations
+    if (nonRespondingPids.length > 0 || intermittentPids.length > 0) {
+      this.app.debug('Recommendations:')
+      if (nonRespondingPids.length > 0) {
+        this.app.debug(`- Consider creating a custom engine profile without these non-responding PIDs:`)
+        this.app.debug(`  ${nonRespondingPids.map(p => p.pid).join(', ')}`)
+      }
+      if (intermittentPids.length > 0) {
+        this.app.debug(`- Monitor these intermittent PIDs - they may indicate connection issues:`)
+        this.app.debug(`  ${intermittentPids.map(p => `${p.pid} (${p.successRate}%)`).join(', ')}`)
+      }
+      this.app.debug('')
+    }
+    
+    // Log batch mode status
+    if (this.batchModeFailed) {
+      this.app.debug('Note: Batch mode failed - operating in single PID mode')
+    } else if (this.batchMode) {
+      this.app.debug(`Batch mode: Enabled (max ${this.maxBatchSize} PIDs per request)`)
+    }
+    
+    this.app.debug('='.repeat(50))
+    
+    // Emit summary event for potential UI display
+    this.emit('pidSummary', {
+      engineProfile: `${this.engineProfile.manufacturer} ${this.engineProfile.model}`,
+      totalPids: this.enabledPids.length,
+      respondingPids: respondingPids.length,
+      nonRespondingPids: nonRespondingPids.length,
+      intermittentPids: intermittentPids.length,
+      elapsedTime: `${elapsedMinutes}m ${elapsedSeconds}s`,
+      details: {
+        responding: respondingPids,
+        nonResponding: nonRespondingPids,
+        intermittent: intermittentPids
+      }
+    })
   }
 }
 

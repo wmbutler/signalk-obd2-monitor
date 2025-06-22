@@ -13,6 +13,7 @@ A comprehensive SignalK plugin for monitoring marine engines via OBD2 interface 
 - **Continuous Mode**: Automatic continuous querying without delays between values
 - **Fault Tolerant**: Continues monitoring even when engine is off, automatically resumes when engine starts
 - **Connection State Management**: Distinguishes between engine off and adapter disconnected states
+- **PID Response Tracking**: Automatic summary of which PIDs are responding after first complete cycle
 
 ## Supported Engine Manufacturers
 
@@ -96,11 +97,42 @@ When debug mode is enabled, the plugin will log:
 - PID data processing and conversions
 - Special tracking for RPM queries (PID 0C)
 - Error messages and troubleshooting information
+- **PID Response Summary** after first complete cycle showing:
+  - Which PIDs are responding successfully
+  - Which PIDs are returning NO DATA
+  - Success rates for intermittent PIDs
+  - Recommendations for optimizing engine profiles
 
 Debug logs can be viewed in:
 - SignalK Data Browser (Server → Data Browser)
 - Server logs (typically in `~/.signalk/logs/`)
 - Console output if running SignalK in development mode
+
+#### PID Response Summary
+
+After cycling through all configured PIDs once, the plugin generates a comprehensive summary:
+
+```
+=== OBD2 PID Response Summary ===
+Engine Profile: Hyundai SeasAll S270
+Total PIDs configured: 15
+
+Responding PIDs (10):
+✓ 04 (Engine Load): 100% success rate - Last: 45 %
+✓ 05 (Coolant Temperature): 100% success rate - Last: 85 °C
+✓ 0C (RPM): 100% success rate - Last: 2500 rpm
+...
+
+Non-responding PIDs (5):
+✗ 5C (Oil Temperature): 0% success rate (NO DATA)
+✗ 22:0545 (Fuel Rate Mode 22): 0% success rate (NO DATA)
+...
+
+Recommendations:
+- Consider creating a custom engine profile without these non-responding PIDs
+```
+
+This helps users identify which PIDs their engine actually supports and optimize their configuration.
 
 ## Hardware Requirements
 
@@ -225,6 +257,14 @@ MIT License - see LICENSE file for details
 - SignalK Slack channel: #obd2-monitor
 
 ## Changelog
+
+### v1.5.0
+- Added PID response tracking and summary generation
+- Automatic summary after first complete cycle through all PIDs
+- Shows responding, non-responding, and intermittent PIDs
+- Provides recommendations for optimizing engine profiles
+- Added support for vLinker FS adapter response format
+- Fixed parsing of responses with byte count prefixes and line numbers
 
 ### v1.4.0
 - Added fault-tolerant connection management
