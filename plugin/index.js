@@ -7,6 +7,16 @@ module.exports = function (app) {
   let obd2Connection = null
   let updateInterval = null
   let fuelConsumptionTracker = null
+  
+  // Track previous states to avoid duplicate updates
+  let previousStatus = {
+    pluginStatus: null,
+    pluginError: null,
+    notifications: {
+      engineOff: null,
+      disconnected: null
+    }
+  }
 
   plugin.id = 'signalk-obd2-monitor'
   plugin.name = 'OBD2 Engine Monitor'
@@ -86,12 +96,12 @@ module.exports = function (app) {
       
       obd2Connection.on('connected', () => {
         app.debug('OBD2 adapter connected')
-        app.setPluginStatus('Connecting to adapter...')
+        updatePluginStatus('Connecting to adapter...')
       })
       
       obd2Connection.on('disconnected', () => {
         app.debug('OBD2 adapter disconnected')
-        app.setPluginError('Adapter disconnected')
+        updatePluginError('Adapter disconnected')
         // Don't send any updates when disconnected - SignalK will retain last values
       })
       
@@ -102,27 +112,27 @@ module.exports = function (app) {
       
       obd2Connection.on('adapterVerified', (info) => {
         app.debug('Adapter verified:', info)
-        app.setPluginStatus('Adapter connected - Checking engine...')
+        updatePluginStatus('Adapter connected - Checking engine...')
       })
       
       obd2Connection.on('adapterError', (error) => {
         app.error('Adapter error:', error)
-        app.setPluginError(`Adapter not detected: ${error}`)
+        updatePluginError(`Adapter not detected: ${error}`)
       })
       
       obd2Connection.on('engineVerified', () => {
         app.debug('Engine communication verified')
-        app.setPluginStatus('Engine online - Initializing...')
+        updatePluginStatus('Engine online - Initializing...')
       })
       
       obd2Connection.on('engineOff', (message) => {
         app.debug('Engine off:', message)
-        app.setPluginStatus('Adapter connected - Engine off')
+        updatePluginStatus('Adapter connected - Engine off')
       })
       
       obd2Connection.on('engineError', (error) => {
         app.error('Engine error:', error)
-        app.setPluginError(`Engine communication error: ${error}`)
+        updatePluginError(`Engine communication error: ${error}`)
       })
 
       obd2Connection.connect()
@@ -286,85 +296,52 @@ module.exports = function (app) {
     // Update plugin status based on state
     switch (state) {
       case 'disconnected':
-        app.setPluginError('Adapter not detected - Check serial port connection')
-        app.handleMessage(plugin.id, {
-          updates: [{
-            values: [{
-              path: 'notifications.obd2.disconnected',
-              value: {
-                state: 'alert',
-                method: ['visual', 'sound'],
-                message: 'OBD2 adapter disconnected - check connection'
-              }
-            }]
-          }]
+        updatePluginError('Adapter not detected - Check serial port connection')
+        updateNotification('notifications.obd2.disconnected', {
+          state: 'alert',
+          method: ['visual', 'sound'],
+          message: 'OBD2 adapter disconnected - check connection'
         })
         break
         
       case 'connecting':
-        app.setPluginStatus('Connecting to adapter...')
+        updatePluginStatus('Connecting to adapter...')
         break
         
       case 'adapter_check':
-        app.setPluginStatus('Verifying adapter...')
+        updatePluginStatus('Verifying adapter...')
         break
         
       case 'engine_check':
-        app.setPluginStatus('Checking engine communication...')
+        updatePluginStatus('Checking engine communication...')
         break
         
       case 'initializing':
-        app.setPluginStatus('Initializing OBD2 connection...')
+        updatePluginStatus('Initializing OBD2 connection...')
         break
         
       case 'active':
-        app.setPluginStatus('Engine online - Monitoring active')
+        updatePluginStatus('Engine online - Monitoring active')
         // Clear notifications
-        app.handleMessage(plugin.id, {
-          updates: [{
-            values: [
-              {
-                path: 'notifications.obd2.engineOff',
-                value: null
-              },
-              {
-                path: 'notifications.obd2.disconnected',
-                value: null
-              }
-            ]
-          }]
-        })
+        updateNotification('notifications.obd2.engineOff', null)
+        updateNotification('notifications.obd2.disconnected', null)
         break
         
       case 'probing':
-        app.setPluginStatus('Adapter connected - Engine off (probing)')
-        app.handleMessage(plugin.id, {
-          updates: [{
-            values: [{
-              path: 'notifications.obd2.engineOff',
-              value: {
-                state: 'normal',
-                method: ['visual'],
-                message: 'Engine appears to be off - OBD2 adapter is connected but not receiving engine data'
-              }
-            }]
-          }]
+        updatePluginStatus('Adapter connected - Engine off (probing)')
+        updateNotification('notifications.obd2.engineOff', {
+          state: 'normal',
+          method: ['visual'],
+          message: 'Engine appears to be off - OBD2 adapter is connected but not receiving engine data'
         })
         break
         
       case 'engine_off':
-        app.setPluginStatus('Adapter connected - Engine off')
-        app.handleMessage(plugin.id, {
-          updates: [{
-            values: [{
-              path: 'notifications.obd2.engineOff',
-              value: {
-                state: 'normal',
-                method: ['visual'],
-                message: 'Engine is off - Start engine to begin monitoring'
-              }
-            }]
-          }]
+        updatePluginStatus('Adapter connected - Engine off')
+        updateNotification('notifications.obd2.engineOff', {
+          state: 'normal',
+          method: ['visual'],
+          message: 'Engine is off - Start engine to begin monitoring'
         })
         break
     }
@@ -442,6 +419,43 @@ module.exports = function (app) {
     // This would calculate fuel efficiency based on speed and fuel rate
     // Implementation depends on having both speed and fuel rate data
     // Left as a framework for future enhancement
+  }
+  
+  // Helper functions to avoid duplicate updates
+  function updatePluginStatus(message) {
+    if (previousStatus.pluginStatus !== message) {
+      previousStatus.pluginStatus = message
+      previousStatus.pluginError = null // Clear error when setting status
+      app.setPluginStatus(message)
+    }
+  }
+  
+  function updatePluginError(message) {
+    if (previousStatus.pluginError !== message) {
+      previousStatus.pluginError = message
+      previousStatus.pluginStatus = null // Clear status when setting error
+      app.setPluginError(message)
+    }
+  }
+  
+  function updateNotification(path, value) {
+    const notificationKey = path.split('.').pop() // Get last part of path
+    const previousValue = previousStatus.notifications[notificationKey]
+    
+    // Check if notification has changed
+    const hasChanged = JSON.stringify(previousValue) !== JSON.stringify(value)
+    
+    if (hasChanged) {
+      previousStatus.notifications[notificationKey] = value
+      app.handleMessage(plugin.id, {
+        updates: [{
+          values: [{
+            path: path,
+            value: value
+          }]
+        }]
+      })
+    }
   }
 
   return plugin
